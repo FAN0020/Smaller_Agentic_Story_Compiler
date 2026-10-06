@@ -15,11 +15,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import Field, field_validator
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from .contracts import BibleDraft
+from .contracts import BibleDraft, PlanRevision
 from .domain import STYLES, Contract, CreativeBrief
 from .jobs import JobWorker
 from .planning import Planner
 from .production import Producer, assert_production_approved
+from .review import revise_plan
 from .settings import SettingsStore
 from .storage import Repository
 from .validation import assert_references_frozen
@@ -222,6 +223,14 @@ def create_app(root: Path | None = None, start_worker=True):
                 raise ValueError("Create a revision to reanalyze a frozen story")
             payload = {**body.model_dump(exclude={"kind"}), "model_settings": settings.get().model_dump()}
             return repo.enqueue(id, body.kind, payload)
+
+    @app.put("/api/projects/{id}/plans/{number}")
+    def edit_plan(id: str, number: int, revision: PlanRevision):
+        with lock:
+            idle(id)
+            p = repo.get_project(id)
+            validate_numbers(p, [number])
+            return revise_plan(repo, p, number, revision)
 
     @app.post("/api/projects/{id}/approve")
     def approve(id: str, body: Approval):

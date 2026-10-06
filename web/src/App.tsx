@@ -351,7 +351,7 @@ export default function App() {
                 busy={busy}
                 selected={selected}
                 setSelected={setSelected}
-                act={safeAct}
+                act={act}
                 job={safeJob}
                 navigate={setPage}
                 settings={settings}

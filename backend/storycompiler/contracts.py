@@ -230,6 +230,11 @@ class ShotBatch(Contract):
     shots: list[ShotPlan] = Field(min_length=1)
 
 
+class PlanRevision(Contract):
+    scenes: list[ScenePlan] = Field(min_length=1)
+    shots: list[ShotPlan] = Field(min_length=1)
+
+
 class ShotDraft(ShotPlan):
     id: str = ""
     scene_id: str = ""

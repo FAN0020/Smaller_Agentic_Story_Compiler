@@ -3,6 +3,7 @@ import { ArrowRight, Check, Clapperboard, RefreshCw } from "lucide-react";
 import { artifact } from "./api";
 import type { Data } from "./api";
 import { Button, Empty, EpisodePicker, Header, Tag } from "./components";
+import PlanEditor from "./PlanEditor";
 
 type Props = {
   project: Data | null;
@@ -147,7 +148,9 @@ export default function ProductionView({
             {allRefs ? (
               <Button
                 disabled={busy}
-                onClick={() => void act("/approve", { kind: "references" })}
+                onClick={() =>
+                  void act("/approve", { kind: "references" }).catch(() => {})
+                }
               >
                 <Check size={15} /> Approve all references
               </Button>
@@ -337,6 +340,16 @@ export default function ProductionView({
                       ))}
                     </div>
                   )}
+                  {plan.scenes.length > 0 && !p.productions[String(n)]?.clips && (
+                    <PlanEditor
+                      number={n}
+                      plan={plan}
+                      disabled={busy}
+                      save={(revision) =>
+                        act(`/plans/${n}`, { ...revision, _method: "PUT" })
+                      }
+                    />
+                  )}
                 </div>
               );
             })}
@@ -359,7 +372,7 @@ export default function ProductionView({
                       kind: "plans",
                       numbers: selected,
                       accept_findings: accept,
-                    })
+                    }).catch(() => {})
                   }
                 >
                   Approve selected plans <Check size={15} />
