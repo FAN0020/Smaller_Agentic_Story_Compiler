@@ -460,6 +460,10 @@ class Planner:
                 if existing:
                     if reviews.get(scene["id"], {}).get("hash") == fingerprint(existing):
                         continue
+                    self.progress(
+                        (index + scene_index / len(plan["scenes"])) / len(numbers),
+                        f"Reviewing saved Episode {number}, scene {scene_index + 1}…",
+                    )
                     review, errors = self.semantic_gate(
                         scoped, "shots within assigned scene events only", existing
                     )
@@ -471,6 +475,7 @@ class Planner:
                         {"scene": scene["id"], "shots": existing, "review": review}
                     )
                     plan["shots"] = [s for s in plan["shots"] if s["scene_id"] != scene["id"]]
+                    self.checkpoint(p, "Saved scene requires source-scoped repair")
                 shots = []
                 for attempt in range(3):
                     self.progress(
@@ -540,6 +545,7 @@ class Planner:
                             "shots": [s.model_dump() for s in shots],
                         }
                     )
+                    self.repo.save_project(p)
                     if not errors:
                         break
                 if errors:
