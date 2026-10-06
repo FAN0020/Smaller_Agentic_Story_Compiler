@@ -106,3 +106,22 @@ def test_narration_mix_keeps_original_video_sound(tmp_path):
 
     assert energy(400) > energy(600) * 100
     assert energy(800) > energy(600) * 100
+
+
+def test_changed_reference_hash_cannot_reuse_prior_approval():
+    from storycompiler.domain import fingerprint
+    from storycompiler.validation import assert_references_frozen, reference_manifest
+
+    p = {
+        "bible": {"characters": [{"id": "mouse"}], "locations": [{"id": "forest"}]},
+        "bible_hash": "canon",
+        "references": {
+            name: {"sha256": "original", "bible_hash": "canon", "approved": True}
+            for name in ("mouse", "forest")
+        },
+    }
+    p["references_hash"] = fingerprint(reference_manifest(p))
+    assert_references_frozen(p)
+    p["references"]["mouse"]["sha256"] = "changed"
+    with pytest.raises(ValueError, match="changed"):
+        assert_references_frozen(p)
