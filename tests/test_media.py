@@ -125,3 +125,17 @@ def test_changed_reference_hash_cannot_reuse_prior_approval():
     p["references"]["mouse"]["sha256"] = "changed"
     with pytest.raises(ValueError, match="changed"):
         assert_references_frozen(p)
+
+
+def test_four_minute_episode_does_not_accumulate_audio_padding(tmp_path):
+    from storycompiler.media import animatic_clip, assemble, probe
+
+    image = tmp_path / "frame.png"
+    Image.new("RGB", (160, 90), "blue").save(image)
+    clip = tmp_path / "clip.mp4"
+    animatic_clip(image, clip, 4, (160, 90))
+    episode = tmp_path / "long-episode.mp4"
+    duration = assemble([clip] * 60, episode, 240)
+    assert abs(duration - 240) < 0.35
+    video = next(s for s in probe(episode)["streams"] if s["codec_type"] == "video")
+    assert int(video["nb_frames"]) == 24 * 240
