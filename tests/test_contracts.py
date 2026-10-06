@@ -39,6 +39,25 @@ def shot_payload():
     }
 
 
+def test_bible_rejects_colliding_character_and_location_identifiers():
+    c, _ = api()
+    character = {key: "shared" for key in c.Character.model_fields}
+    location = {key: "shared" for key in c.Location.model_fields}
+    with pytest.raises(ValueError, match="unique"):
+        c.BibleDraft(
+            title="Test",
+            logline="A forest story",
+            genre="Fable",
+            themes=[],
+            characters=[character],
+            locations=[location],
+            directing_principles=[],
+            adaptation_notes=[],
+            content_warnings=[],
+            visual_motifs=[],
+        )
+
+
 def test_continuity_gate_catches_unmotivated_state_reset():
     c, v = api()
     a = c.ShotPlan(**shot_payload())

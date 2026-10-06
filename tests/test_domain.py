@@ -50,6 +50,8 @@ def test_director_policy_does_not_confuse_style_with_story_mode():
     assert children.policy.age_range == "6–9"
     with pytest.raises(ValueError):
         d.CreativeBrief(target_seconds=241)
+    with pytest.raises(ValueError):
+        d.CreativeBrief(target_seconds=61)
 
 
 def test_freeze_hash_detects_nested_canon_changes():

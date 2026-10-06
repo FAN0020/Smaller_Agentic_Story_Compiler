@@ -92,7 +92,7 @@ class DirectorPolicy(Contract):
 class CreativeBrief(Contract):
     mode: Literal["general", "children"] = "general"
     style: str = "watercolor"
-    target_seconds: int = Field(default=120, ge=60, le=240)
+    target_seconds: int = Field(default=120, ge=60, le=240, multiple_of=4)
     age_range: Literal["3–5", "6–9", "10–12"] = "6–9"
     fidelity: Literal["faithful", "balanced", "creative"] = "faithful"
     direction: str = Field(default="", max_length=2000)

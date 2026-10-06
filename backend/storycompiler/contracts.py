@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from .domain import Contract
 
@@ -59,6 +59,13 @@ class BibleDraft(Contract):
     adaptation_notes: list[str]
     content_warnings: list[str]
     visual_motifs: list[str]
+
+    @model_validator(mode="after")
+    def unique_identities(self):
+        ids = [entity.id for entity in [*self.characters, *self.locations]]
+        if any(not identity.strip() for identity in ids) or len(set(ids)) != len(ids):
+            raise ValueError("Character and location IDs must be non-empty and globally unique")
+        return self
 
 
 class EmotionBeat(Contract):
