@@ -29,9 +29,26 @@ def wait_until(check, seconds=20):
 
 def main():
     release = threading.Event()
+    request_started = threading.Event()
 
     class SlowProvider(BaseHTTPRequestHandler):
+        def reply(self, payload):
+            body = json.dumps(payload).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            self.reply({"models": [{"name": "qwen3.5:4b", "size": 1}]})
+
         def do_POST(self):
+            self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            if self.path == "/api/show":
+                self.reply({"capabilities": ["completion", "thinking"]})
+                return
+            request_started.set()
             release.wait(30)
             self.send_response(503)
             self.end_headers()
@@ -82,9 +99,17 @@ def main():
                 ).json()
                 path = f"/api/projects/{p['id']}"
                 job = client.post(path + "/jobs", json={"kind": "analyze"}).json()
-                wait_until(lambda: client.get(path).json()["jobs"][0]["status"] == "running")
+
+                def running():
+                    current = client.get(path).json()["jobs"][0]
+                    if current["status"] not in ("queued", "running"):
+                        raise AssertionError(f"Job stopped before restart verification: {current}")
+                    return current["status"] == "running" and request_started.is_set()
+
+                wait_until(running)
                 process.kill()
                 process.wait(timeout=5)
+                request_started.clear()
                 process = start()
                 restored = client.get(path).json()
                 assert restored["source"] == p["source"]
@@ -93,7 +118,7 @@ def main():
                 assert client.get(path).json()["jobs"][0]["status"] == "interrupted"
                 assert client.post(path + "/jobs", json={"kind": "render", "numbers": [1]}).status_code == 409
                 client.post(f"/api/jobs/{job['id']}/resume", json={}).raise_for_status()
-                wait_until(lambda: client.get(path).json()["jobs"][0]["status"] == "running")
+                wait_until(running)
                 print(
                     json.dumps(
                         {
