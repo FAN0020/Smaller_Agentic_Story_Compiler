@@ -24,8 +24,33 @@ from .validation import (
 
 
 def shot_context(context, scene):
-    return {k: v for k, v in context.items() if k not in ("episode", "source_events")} | {
-        "source_events": [e for e in context["source_events"] if e["id"] in scene["source_event_ids"]]
+    events = [e for e in context["source_events"] if e["id"] in scene["source_event_ids"]]
+    bible = {
+        k: v
+        for k, v in context.get("bible", {}).items()
+        if k in ("characters", "locations", "style_instruction", "policy", "directing_principles")
+    }
+    for kind in ("characters", "locations"):
+        if kind in bible:
+            bible[kind] = [{k: v for k, v in item.items() if k != "source_facts"} for item in bible[kind]]
+    return {
+        k: v
+        for k, v in context.items()
+        if k
+        not in (
+            "episode",
+            "source_events",
+            "original_source_excerpts",
+            "bible",
+            "target_seconds",
+            "total_clips",
+        )
+    } | {
+        "bible": bible,
+        "source_events": events,
+        "original_source_excerpts": [
+            {"text": quote} for quote in dict.fromkeys(e.get("quote", "") for e in events)
+        ],
     }
 
 
@@ -314,7 +339,7 @@ class Planner:
         if errors:
             raise ReviewRequired("; ".join(errors))
         p["status"] = "episodes_ready"
-        self.checkpoint(p, "Choose episodes and approve the visual references", 1)
+        self.checkpoint(p, "Choose episodes and direct their scenes", 1)
 
     def direct(self, p, numbers):
         self.assert_frozen(p)
@@ -416,9 +441,24 @@ class Planner:
                     self.checkpoint(p, "Scene fidelity requires repair; resume to re-direct")
                     raise ReviewRequired("; ".join(errors))
             for scene_index, scene in enumerate(plan["scenes"]):
-                if any(s["scene_id"] == scene["id"] for s in plan["shots"]):
-                    continue
+                scoped = shot_context(context, scene)
+                existing = [s for s in plan["shots"] if s["scene_id"] == scene["id"]]
                 errors = []
+                reviews = plan.setdefault("shot_reviews", {})
+                if existing:
+                    if reviews.get(scene["id"], {}).get("hash") == fingerprint(existing):
+                        continue
+                    review, errors = self.semantic_gate(
+                        scoped, "shots within assigned scene events only", existing
+                    )
+                    if not errors:
+                        reviews[scene["id"]] = {"hash": fingerprint(existing), "review": review}
+                        self.checkpoint(p, f"Episode {number}: scene {scene_index + 1} fidelity checked")
+                        continue
+                    plan.setdefault("superseded_shots", []).append(
+                        {"scene": scene["id"], "shots": existing, "review": review}
+                    )
+                    plan["shots"] = [s for s in plan["shots"] if s["scene_id"] != scene["id"]]
                 shots = []
                 for attempt in range(3):
                     self.progress(
@@ -428,10 +468,9 @@ class Planner:
                     result = self.llm.generate(
                         "shot-director",
                         {
-                            **shot_context(context, scene),
+                            **scoped,
                             "scene": scene,
                             "shot_count": scene["duration"] // 4,
-                            "previous_shot": plan["shots"][-1:] or [],
                             "repair_feedback": errors,
                             "previous_candidate": [s.model_dump() for s in shots] if attempt else None,
                         },
@@ -442,7 +481,7 @@ class Planner:
                             [s.model_dump() for s in result.shots],
                             scene,
                             p["bible_hash"],
-                            shot_context(context, scene)["source_events"],
+                            scoped["source_events"],
                         )
                     except ValueError as e:
                         errors = [str(e)]
@@ -473,6 +512,14 @@ class Planner:
                         errors.append(
                             f"First start_state must be EXACTLY {scene['start_state']}; last end_state must be EXACTLY {scene['end_state']}. Do not enact later events."
                         )
+                    if not errors:
+                        review, errors = self.semantic_gate(
+                            scoped, "shots within assigned scene events only", [s.model_dump() for s in shots]
+                        )
+                        reviews[scene["id"]] = {
+                            "hash": fingerprint([s.model_dump() for s in shots]) if not errors else None,
+                            "review": review,
+                        }
                     plan["attempts"].append(
                         {
                             "scene": scene["id"],
@@ -488,6 +535,8 @@ class Planner:
                     self.checkpoint(p, "Shot planning needs review")
                     raise ReviewRequired("; ".join(errors[:5]))
                 plan["shots"].extend(s.model_dump() for s in shots)
+                order = {s["id"]: i for i, s in enumerate(plan["scenes"])}
+                plan["shots"].sort(key=lambda s: order[s["scene_id"]])
                 self.checkpoint(p, f"Episode {number}: scene {scene_index + 1} coverage saved")
             shots = [ShotPlan.model_validate(s) for s in plan["shots"]]
             errors = validate_shots(
@@ -513,5 +562,8 @@ class Planner:
             plan["hash"] = fingerprint(
                 {"scenes": plan["scenes"], "shots": plan["shots"], "bible_hash": p["bible_hash"]}
             )
+            if plan.get("approved_hash") != plan["hash"]:
+                plan.pop("approved_hash", None)
+                plan.pop("approved_at", None)
             p["status"] = "plan_review"
             self.checkpoint(p, f"Episode {number} is ready for plan review", (index + 1) / len(numbers))

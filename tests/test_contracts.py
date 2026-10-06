@@ -208,3 +208,32 @@ def test_opening_frame_prompt_cannot_jump_ahead_to_the_shot_end_state():
     assert '"paw": "open"' not in prompt
     assert shot.action not in prompt
     assert "golden mane" in prompt and "morning" in prompt
+
+
+def test_shot_agent_sees_only_assigned_source_passages_and_visual_canon():
+    from storycompiler.planning import shot_context
+
+    result = shot_context(
+        {
+            "source_events": [
+                {"id": "ev1", "quote": "The lion was asleep.", "source_id": "src1"},
+                {"id": "ev2", "quote": "The mouse pleaded.", "source_id": "src1"},
+            ],
+            "original_source_excerpts": [{"text": "The lion was asleep. The mouse pleaded."}],
+            "bible": {
+                "logline": "The mouse pleaded and later rescued the lion.",
+                "characters": [
+                    {
+                        "id": "lion",
+                        "appearance": "golden",
+                        "source_facts": "Catches the mouse then releases it",
+                    }
+                ],
+                "style_instruction": "watercolor",
+            },
+        },
+        {"source_event_ids": ["ev1"]},
+    )
+    assert "pleaded" not in str(result)
+    assert "Catches" not in str(result)
+    assert "golden" in str(result) and "The lion was asleep." in str(result)
