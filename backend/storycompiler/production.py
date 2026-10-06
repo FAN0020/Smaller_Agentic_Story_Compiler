@@ -203,10 +203,18 @@ class Producer:
                     for entity in [*shot.characters, shot.location_id]
                 ]
                 if not frame.exists():
+                    self.progress(
+                        completed / total,
+                        f"Painting Episode {number}, frame {i + 1} of {len(plan['shots'])}…",
+                    )
                     still_prompt = compile_frame(shot, p["bible"], scene)
                     self.image(still_prompt, frame, receipt["seed"], refs)
                 raw = directory / f"{prefix}ep{number}-{i + 1:03}-raw.mp4"
                 if not raw.exists():
+                    self.progress(
+                        (completed + 0.25) / total,
+                        f"Animating Episode {number}, shot {i + 1} of {len(plan['shots'])}…",
+                    )
                     if self.settings.video_provider == "animatic":
                         animatic_clip(frame, raw, shot.duration)
                     elif self.settings.video_provider == "local":
@@ -230,6 +238,10 @@ class Producer:
                         )
                 narration = None
                 if shot.narration and self.settings.voice_provider != "none":
+                    self.progress(
+                        (completed + 0.85) / total,
+                        f"Recording Episode {number}, line {i + 1} of {len(plan['shots'])}…",
+                    )
                     narration = directory / f"{prefix}ep{number}-{i + 1:03}-voice.wav"
                     if not narration.exists():
                         if self.settings.voice_provider == "system":

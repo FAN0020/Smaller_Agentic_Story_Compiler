@@ -15,7 +15,7 @@ ollama pull qwen3.5:9b
 
 Open **http://127.0.0.1:8787**. Choose `qwen3.5:9b` in **Models & settings** for a stronger local planner, or enter an API model and key. `qwen3.5:4b` is the lighter default; it may require more repair and review. The app listens only on the local machine. Run one server process for a workspace.
 
-Model installation is separate from startup and resumable. Image weights use about 2.6 GB; the LTX checkpoint is converted shard by shard to bfloat16 to save disk. Installation needs extra temporary space for one original shard. Actual local generation was exercised on Apple M5 Pro / 24 GB RAM. Inference on other hardware is not yet verified. CPU-only video is likely impractically slow.
+Model installation is separate from startup and resumable. FLUX.2 Klein image weights use about 16 GB; the LTX checkpoint is converted shard by shard to bfloat16 to save disk. Installation needs extra temporary space for one original video shard. Actual local generation was exercised on Apple M5 Pro / 24 GB RAM. Inference on other hardware is not yet verified. CPU-only production is likely impractically slow.
 
 ## Workflow
 
@@ -25,19 +25,21 @@ Model installation is separate from startup and resumable. Image weights use abo
 4. **Watch:** play/download complete episodes and review their visual storytelling. Technical validation never automatically approves artistic quality.
 5. **Evaluate:** inspect source evidence, plan reviews, lineage and sampled video frames.
 
-Jobs persist in SQLite. Cancellation stops at a safe checkpoint; completed clips remain. Failed/interrupted work can resume. Each job freezes model choices when queued; global settings changes do not change that job. An ambiguous paid-video submission requires checking the provider account rather than silently submitting twice.
+Jobs persist in SQLite. Cancellation stops at a safe checkpoint; completed clips remain. Failed/interrupted work can resume. Each job freezes model choices when queued; global settings changes do not change that job. **New take** archives the previous output and receipts, retains the approved plan, and permits a fresh render with different model settings. An ambiguous paid-video submission requires checking the provider account rather than silently submitting twice.
 
 ## Local and API models
 
 | Stage | Local | API |
 |---|---|---|
 | Analysis, bibles, direction, critics | Ollama structured-output models | OpenAI or compatible Chat Completions endpoint |
-| Visual references and shot frames | Stable Diffusion Turbo, fp16 | OpenAI Images generation/edits |
+| Visual references and shot frames | FLUX.2 Klein 4B, bfloat16, native multi-reference input | OpenAI Images generation/edits |
 | Motion clips | LTX-Video 0.9.1, bfloat16 | Sora video creation/status/content |
 | Narration | macOS `say` | OpenAI speech |
 | Assembly | FFmpeg | Always local |
 
 Local models incur no per-call API charge; their licenses and hardware costs still apply. Hosted calls use your credentials and provider billing. Keys are encrypted with a local 0600 master key, stored outside project artifacts, and omitted from exports and logs. Back up `.studio/secret.key` with `.studio/secrets.enc` if moving your encrypted credentials. This protects accidental disclosure, not a compromised local user account.
+
+SD-Turbo is also available for fast reference studies (`scripts/setup_models.py fast-image`). It cannot compose production scenes from multiple approved images. A real evaluation exposed collage artifacts, so the application requires a native multi-reference model for that stage. Existing approved SD-Turbo reference designs can be used by FLUX or the image API.
 
 An **illustrated animatic** option creates an editorial preview using generated stills, camera motion and narration. It is clearly labeled and does not substitute for generated character motion. Local video has no native audio: narration can be synthesized; Foley/music remain plan instructions unless the chosen video model supplies them. Captions are exported separately.
 
@@ -67,4 +69,4 @@ npm --prefix web run dev
 
 ## Provider references
 
-Implementation checked against official [Ollama structured outputs](https://docs.ollama.com/capabilities/structured-outputs), [SD-Turbo model card](https://huggingface.co/stabilityai/sd-turbo), [Diffusers LTX documentation](https://huggingface.co/docs/diffusers/api/pipelines/ltx_video), and [OpenAI video documentation](https://developers.openai.com/api/docs/guides/video-generation), accessed October 6, 2026. Provider availability, limits and account permissions can change.
+Implementation checked against official [Ollama structured outputs](https://docs.ollama.com/capabilities/structured-outputs), [FLUX.2 Klein model card](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B), [SD-Turbo model card](https://huggingface.co/stabilityai/sd-turbo), [Diffusers LTX documentation](https://huggingface.co/docs/diffusers/api/pipelines/ltx_video), and [OpenAI video documentation](https://developers.openai.com/api/docs/guides/video-generation), accessed October 6–7, 2026. Provider availability, limits and account permissions can change.
