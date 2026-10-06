@@ -85,6 +85,8 @@ def test_semantic_scene_error_stops_before_shot_generation(tmp_path):
                                 "episode_number": 1,
                                 "bible_hash": context["bible_hash"],
                                 "title": "Wrong sleeping animal",
+                                "end_event_number": 1,
+                                "end_clip_number": 15,
                                 "purpose": "Wake",
                                 "objective": "Escape",
                                 "conflict": "Capture",

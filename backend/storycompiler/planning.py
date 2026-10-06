@@ -4,7 +4,15 @@ import math
 import re
 import time
 
-from .contracts import BibleDraft, ChunkAnalysis, CriticReport, EpisodeBatch, SceneBatch, ShotBatch, ShotPlan
+from .contracts import (
+    BibleDraft,
+    BoundaryBatch,
+    ChunkAnalysis,
+    CriticReport,
+    SceneBoundaryBatch,
+    ShotBatch,
+    ShotPlan,
+)
 from .domain import STYLE_BY_ID, CreativeBrief, chunk_source, fingerprint
 from .validation import validate_outline, validate_scenes, validate_shots, validate_timeline
 
@@ -18,6 +26,38 @@ def shot_context(context, scene):
 def source_excerpts(p, events):
     ids = {e["source_id"] for e in events}
     return [c.model_dump() for c in chunk_source(p["source"]) if c.id in ids]
+
+
+def partition_events(boundaries, events):
+    if not boundaries or boundaries[-1] != len(events):
+        raise ValueError(f"The last boundary must end at event number {len(events)}")
+    cursor = 0
+    parts = []
+    for end in boundaries:
+        if end <= cursor or end > len(events):
+            raise ValueError("Boundary values must strictly increase through all supplied events")
+        parts.append([e["id"] for e in events[cursor:end]])
+        cursor = end
+    return parts
+
+
+def compile_scenes(candidates, events, target_seconds, episode_number, bible_hash):
+    coverage = partition_events([s["end_event_number"] for s in candidates], events)
+    clips = partition_events(
+        [s["end_clip_number"] for s in candidates],
+        [{"id": i} for i in range(target_seconds // 4)],
+    )
+    return [
+        {k: v for k, v in scene.items() if k not in ("end_event_number", "end_clip_number")}
+        | {
+            "id": f"ep{episode_number}-sc{i + 1}",
+            "episode_number": episode_number,
+            "bible_hash": bible_hash,
+            "source_event_ids": coverage[i],
+            "duration": len(clips[i]) * 4,
+        }
+        for i, scene in enumerate(candidates)
+    ]
 
 
 class ReviewRequired(ValueError):
@@ -177,7 +217,11 @@ class Planner:
             self.progress(start / max(1, len(remaining)), "Finding episode boundaries…")
             context = {
                 "bible": p["bible"],
-                "events": group,
+                "events": [
+                    {k: v for k, v in e.items() if k not in ("source_span_id", "source_id")}
+                    | {"event_number": i + 1}
+                    for i, e in enumerate(group)
+                ],
                 "target_seconds": brief.target_seconds,
                 "next_number": len(p["episodes"]) + 1,
                 "previous_episode": p["episodes"][-1:] or [],
@@ -190,10 +234,18 @@ class Planner:
             errors = []
             for attempt in range(3):
                 batch = self.llm.generate(
-                    "episode-planner", {**context, "repair_feedback": errors}, EpisodeBatch
+                    "episode-planner", {**context, "repair_feedback": errors}, BoundaryBatch
                 )
-                eps = [e.model_dump() for e in batch.episodes]
+                p.setdefault("episode_attempts", []).append(batch.model_dump())
+                self.repo.save_project(p)
+                try:
+                    coverage = partition_events([e.end_event_number for e in batch.episodes], group)
+                except ValueError as e:
+                    errors = [str(e)]
+                    continue
+                eps = [e.model_dump(exclude={"end_event_number"}) for e in batch.episodes]
                 for i, ep in enumerate(eps):
+                    ep["source_event_ids"] = coverage[i]
                     ep["number"] = len(p["episodes"]) + i + 1
                     ep["bible_hash"] = p["bible_hash"]
                     ep["target_seconds"] = brief.target_seconds
@@ -248,8 +300,9 @@ class Planner:
                 "episode": episode,
                 "bible": bible,
                 "bible_hash": p["bible_hash"],
-                "source_events": events,
+                "source_events": [e | {"event_number": i + 1} for i, e in enumerate(events)],
                 "target_seconds": brief.target_seconds,
+                "total_clips": brief.target_seconds // 4,
                 "original_source_excerpts": source_excerpts(p, events),
             }
             plan = p["plans"].get(key, {"scenes": [], "shots": [], "status": "planning", "attempts": []})
@@ -274,29 +327,45 @@ class Planner:
                 errors = scene_errors
                 for attempt in range(3):
                     self.progress(index / len(numbers), f"Designing Episode {number} scenes…")
-                    scenes = self.llm.generate(
-                        "scene-director", {**context, "repair_feedback": errors}, SceneBatch
+                    candidate = self.llm.generate(
+                        "scene-director", {**context, "repair_feedback": errors}, SceneBoundaryBatch
                     )
+                    try:
+                        scenes = compile_scenes(
+                            [s.model_dump() for s in candidate.scenes],
+                            events,
+                            brief.target_seconds,
+                            number,
+                            p["bible_hash"],
+                        )
+                    except ValueError as e:
+                        errors = [str(e)]
+                        plan.setdefault("scene_attempts", []).append(
+                            {"candidate": candidate.model_dump(), "errors": errors}
+                        )
+                        p["plans"][key] = plan
+                        self.repo.save_project(p)
+                        continue
                     errors = validate_scenes(
-                        [s.model_dump() for s in scenes.scenes],
+                        scenes,
                         brief.target_seconds,
                         set(episode["source_event_ids"]),
                         {c["id"] for c in bible["characters"]},
                         {l["id"] for l in bible["locations"]},
                     )
                     if not errors:
-                        review, errors = self.semantic_gate(
-                            context, "scene intent and continuity", scenes.model_dump()
-                        )
+                        review, errors = self.semantic_gate(context, "scene intent and continuity", scenes)
                         plan.setdefault("scene_reviews", []).append(review)
+                    plan.setdefault("scene_attempts", []).append(
+                        {"candidate": candidate.model_dump(), "errors": errors}
+                    )
+                    p["plans"][key] = plan
+                    self.repo.save_project(p)
                     if not errors:
                         break
                 if errors:
                     raise ReviewRequired("; ".join(errors))
-                plan["scenes"] = [
-                    {**s.model_dump(), "bible_hash": p["bible_hash"], "episode_number": number}
-                    for s in scenes.scenes
-                ]
+                plan["scenes"] = scenes
                 p["plans"][key] = plan
                 self.checkpoint(p, f"Episode {number}: scenes saved")
             elif not plan.get("scene_reviews"):

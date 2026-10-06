@@ -127,3 +127,32 @@ def test_shot_context_does_not_expose_other_scenes_events():
     )
     assert [e["id"] for e in result["source_events"]] == ["ev1"]
     assert "episode" not in result
+
+
+def test_episode_boundaries_compile_to_complete_ordered_coverage():
+    from storycompiler import planning
+
+    assert hasattr(planning, "partition_events"), "Deterministic boundary compiler is missing"
+    events = [{"id": "a"}, {"id": "b"}, {"id": "c"}, {"id": "d"}]
+    assert planning.partition_events([2, 4], events) == [["a", "b"], ["c", "d"]]
+    with pytest.raises(ValueError):
+        planning.partition_events([2, 3], events)
+    with pytest.raises(ValueError):
+        planning.partition_events([3, 2, 4], events)
+
+
+def test_scene_boundaries_compile_ids_coverage_and_exact_timeline():
+    from storycompiler import planning
+
+    assert hasattr(planning, "compile_scenes"), "Scene boundary compiler is missing"
+    candidates = [
+        {"end_event_number": 2, "end_clip_number": 6, "title": "Mercy"},
+        {"end_event_number": 4, "end_clip_number": 15, "title": "Repayment"},
+    ]
+    events = [{"id": value} for value in ("a", "b", "c", "d")]
+    scenes = planning.compile_scenes(candidates, events, 60, 3, "canon")
+    assert [s["source_event_ids"] for s in scenes] == [["a", "b"], ["c", "d"]]
+    assert [s["duration"] for s in scenes] == [24, 36]
+    assert scenes[0]["id"] == "ep3-sc1" and scenes[1]["bible_hash"] == "canon"
+    with pytest.raises(ValueError):
+        planning.compile_scenes(candidates, events, 64, 3, "canon")

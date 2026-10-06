@@ -95,6 +95,19 @@ class EpisodeBatch(Contract):
     episodes: list[EpisodeOutline] = Field(min_length=1)
 
 
+class EpisodeBoundary(EpisodeOutline):
+    end_event_number: int = Field(
+        ge=1, description="One-based inclusive index of the LAST supplied event in this episode"
+    )
+    source_event_ids: list[str] = Field(
+        default_factory=list, description="Leave empty; code assigns complete coverage from the boundary"
+    )
+
+
+class BoundaryBatch(Contract):
+    episodes: list[EpisodeBoundary] = Field(min_length=1)
+
+
 class ScenePlan(Contract):
     id: str
     episode_number: int
@@ -120,6 +133,20 @@ class ScenePlan(Contract):
 
 class SceneBatch(Contract):
     scenes: list[ScenePlan] = Field(min_length=1)
+
+
+class SceneBoundary(ScenePlan):
+    id: str = ""
+    episode_number: int = 1
+    bible_hash: str = ""
+    source_event_ids: list[str] = Field(default_factory=list)
+    duration: int = 4
+    end_event_number: int = Field(ge=1)
+    end_clip_number: int = Field(ge=1)
+
+
+class SceneBoundaryBatch(Contract):
+    scenes: list[SceneBoundary] = Field(min_length=1)
 
 
 class Camera(Contract):
