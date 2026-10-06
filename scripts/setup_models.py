@@ -7,8 +7,12 @@ Run outside active rendering: conversion and inference both need memory.
 
 import argparse
 import json
+import os
 import shutil
 from pathlib import Path
+
+IMAGE_REVISION = "b261bac6fd2cf515557d5d0707481eafa0485ec2"
+VIDEO_REVISION = "0dfb9a9b26f48256bbafc4e9fa337445ff76dc1c"
 
 
 def install_image(root):
@@ -17,10 +21,11 @@ def install_image(root):
     target = root / "sd-turbo"
     snapshot_download(
         "stabilityai/sd-turbo",
+        revision=IMAGE_REVISION,
         local_dir=target,
         allow_patterns=["*.json", "*.txt", "*.model", "*fp16.safetensors"],
     )
-    (target / "READY").write_text("stabilityai/sd-turbo; fp16\n")
+    (target / "READY").write_text(f"stabilityai/sd-turbo; {IMAGE_REVISION}; fp16\n")
     print("Image model installed:", target, flush=True)
 
 
@@ -32,7 +37,7 @@ def install_video(root):
     repo = "Lightricks/LTX-Video-0.9.1"
     target = root / "ltx-video"
     target.mkdir(parents=True, exist_ok=True)
-    files = HfApi().list_repo_files(repo)
+    files = HfApi().list_repo_files(repo, revision=VIDEO_REVISION)
     selected = [
         f
         for f in files
@@ -46,12 +51,12 @@ def install_video(root):
         if name.endswith(".safetensors") and marker.exists():
             continue
         if not name.endswith(".safetensors"):
-            hf_hub_download(repo, name, local_dir=target)
+            hf_hub_download(repo, name, revision=VIDEO_REVISION, local_dir=target)
             continue
         if shutil.disk_usage(root).free < 8 * 1024**3:
             raise RuntimeError("Need at least 8 GiB free for the next shard and conversion")
         print("Downloading and converting", name, flush=True)
-        downloaded = Path(hf_hub_download(repo, name, local_dir=root / "downloads"))
+        downloaded = Path(hf_hub_download(repo, name, revision=VIDEO_REVISION, local_dir=root / "downloads"))
         tensors = load_file(downloaded)
         converted = {
             key: value.to(torch.bfloat16) if value.is_floating_point() else value
@@ -64,14 +69,16 @@ def install_video(root):
         marker.write_text("bfloat16\n")
         del tensors, converted
         downloaded.unlink()
-    (target / "READY").write_text(repo + "; bfloat16\n")
+    (target / "READY").write_text(f"{repo}; {VIDEO_REVISION}; bfloat16\n")
     print("Video model installed:", target, flush=True)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("kind", choices=["image", "video", "all", "status"])
-    parser.add_argument("--root", type=Path, default=Path(".studio/models"))
+    parser.add_argument(
+        "--root", type=Path, default=Path(os.environ.get("STORY_STUDIO_HOME", ".studio")) / "models"
+    )
     args = parser.parse_args()
     args.root.mkdir(parents=True, exist_ok=True)
     if args.kind == "status":

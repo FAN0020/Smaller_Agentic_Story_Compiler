@@ -1,0 +1,118 @@
+"""Exercise real startup, queued work, abrupt restart, and explicit recovery on isolated data."""
+
+import json
+import os
+import socket
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+import httpx
+
+
+def wait_until(check, seconds=20):
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        try:
+            result = check()
+            if result:
+                return result
+        except (httpx.HTTPError, KeyError, IndexError):
+            pass
+        time.sleep(0.1)
+    raise AssertionError("Runtime condition was not reached")
+
+
+def main():
+    release = threading.Event()
+
+    class SlowProvider(BaseHTTPRequestHandler):
+        def do_POST(self):
+            release.wait(30)
+            self.send_response(503)
+            self.end_headers()
+
+        def log_message(self, *_):
+            pass
+
+    provider = ThreadingHTTPServer(("127.0.0.1", 0), SlowProvider)
+    threading.Thread(target=provider.serve_forever, daemon=True).start()
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    with tempfile.TemporaryDirectory(prefix="story-runtime-") as temporary:
+        env = {**os.environ, "STORY_STUDIO_HOME": temporary}
+        process = None
+        with (
+            Path(temporary, "server.log").open("w") as log,
+            httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=2) as client,
+        ):
+
+            def start():
+                child = subprocess.Popen(
+                    [
+                        sys.executable,
+                        "-m",
+                        "uvicorn",
+                        "storycompiler.api:app",
+                        "--host",
+                        "127.0.0.1",
+                        "--port",
+                        str(port),
+                    ],
+                    env=env,
+                    stdout=log,
+                    stderr=log,
+                )
+                wait_until(lambda: client.get("/api/health").json()["worker_alive"])
+                return child
+
+            try:
+                process = start()
+                assert client.get("/").status_code == 200
+                client.put(
+                    "/api/settings", json={"llm_endpoint": f"http://127.0.0.1:{provider.server_port}"}
+                ).raise_for_status()
+                p = client.post(
+                    "/api/projects", json={"title": "Runtime recovery", "source": "A mouse helps a lion."}
+                ).json()
+                path = f"/api/projects/{p['id']}"
+                job = client.post(path + "/jobs", json={"kind": "analyze"}).json()
+                wait_until(lambda: client.get(path).json()["jobs"][0]["status"] == "running")
+                process.kill()
+                process.wait(timeout=5)
+                process = start()
+                restored = client.get(path).json()
+                assert restored["source"] == p["source"]
+                assert restored["jobs"][0]["status"] == "interrupted"
+                time.sleep(0.7)
+                assert client.get(path).json()["jobs"][0]["status"] == "interrupted"
+                assert client.post(path + "/jobs", json={"kind": "render", "numbers": [1]}).status_code == 409
+                client.post(f"/api/jobs/{job['id']}/resume", json={}).raise_for_status()
+                wait_until(lambda: client.get(path).json()["jobs"][0]["status"] == "running")
+                print(
+                    json.dumps(
+                        {
+                            "startup": "passed",
+                            "worker": "passed",
+                            "persistence": "passed",
+                            "crash_recovery": "passed",
+                            "explicit_resume": "passed",
+                            "approval_gate": "passed",
+                        }
+                    )
+                )
+            finally:
+                if process and process.poll() is None:
+                    process.kill()
+                    process.wait(timeout=5)
+                release.set()
+                provider.shutdown()
+
+
+if __name__ == "__main__":
+    main()
