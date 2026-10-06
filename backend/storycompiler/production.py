@@ -2,9 +2,8 @@
 
 import hashlib
 import time
+import uuid
 from pathlib import Path
-
-from PIL import Image, ImageOps
 
 from .compiler import compile_frame, compile_shot
 from .contracts import ShotPlan
@@ -61,16 +60,7 @@ class Producer:
     def image(self, prompt, output, seed, references=None):
         if self.settings.image_provider == "openai":
             return self.hosted().image(prompt, output, self.settings.image_model, references)
-        reference = None
-        if references:
-            # A contact sheet supplies all approved subjects and location to local img2img.
-            reference = output.with_suffix(".conditioning.png")
-            tiles = [ImageOps.fit(Image.open(r).convert("RGB"), (256, 256)) for r in references]
-            sheet = Image.new("RGB", (512, 512), "#d8d0bd")
-            for i, tile in enumerate(tiles[:4]):
-                sheet.paste(tile, ((i % 2) * 256, (i // 2) * 256))
-            sheet.save(reference)
-        return self.local.image(prompt, output, seed, reference)
+        return self.local.image(prompt, output, seed, references, self.settings.image_model)
 
     def references(self, p, only=None):
         Planner.assert_frozen(p)
@@ -168,6 +158,7 @@ class Producer:
             production = p["productions"].setdefault(
                 key,
                 {
+                    "prefix": f"take-{uuid.uuid4().hex[:8]}-",
                     "clips": {},
                     "status": "rendering",
                     "settings": self.settings.model_dump(),
@@ -185,10 +176,11 @@ class Producer:
                     "Models changed during this production. Restore the saved model settings to resume it."
                 )
             files = []
+            prefix = production.get("prefix", "")
             for i, payload in enumerate(plan["shots"]):
                 shot = ShotPlan.model_validate(payload)
                 receipt = production["clips"].setdefault(shot.id, {})
-                file = f"ep{number}-{i + 1:03}.mp4"
+                file = f"{prefix}ep{number}-{i + 1:03}.mp4"
                 if receipt.get("file") and (directory / receipt["file"]).exists():
                     files.append(directory / receipt["file"])
                     completed += 1
@@ -205,7 +197,7 @@ class Producer:
                     references_hash=p["references_hash"],
                 )
                 self.repo.save_project(p)
-                frame = directory / f"ep{number}-{i + 1:03}-frame.png"
+                frame = directory / f"{prefix}ep{number}-{i + 1:03}-frame.png"
                 refs = [
                     directory / p["references"][entity]["file"]
                     for entity in [*shot.characters, shot.location_id]
@@ -213,7 +205,7 @@ class Producer:
                 if not frame.exists():
                     still_prompt = compile_frame(shot, p["bible"], scene)
                     self.image(still_prompt, frame, receipt["seed"], refs)
-                raw = directory / f"ep{number}-{i + 1:03}-raw.mp4"
+                raw = directory / f"{prefix}ep{number}-{i + 1:03}-raw.mp4"
                 if not raw.exists():
                     if self.settings.video_provider == "animatic":
                         animatic_clip(frame, raw, shot.duration)
@@ -238,7 +230,7 @@ class Producer:
                         )
                 narration = None
                 if shot.narration and self.settings.voice_provider != "none":
-                    narration = directory / f"ep{number}-{i + 1:03}-voice.wav"
+                    narration = directory / f"{prefix}ep{number}-{i + 1:03}-voice.wav"
                     if not narration.exists():
                         if self.settings.voice_provider == "system":
                             system_voice(shot.narration, narration, self.settings.voice)
@@ -256,13 +248,13 @@ class Producer:
                 completed += 1
                 self.repo.save_project(p)
             self.progress(completed / total, f"Assembling Episode {number}…")
-            output = directory / f"episode-{number}.mp4"
+            output = directory / f"{prefix}episode-{number}.mp4"
             duration = assemble(files, output, p["brief"]["target_seconds"])
-            subtitles = directory / f"episode-{number}.vtt"
+            subtitles = directory / f"{prefix}episode-{number}.vtt"
             write_subtitles(plan["shots"], subtitles)
             samples = []
             for j, seconds in enumerate((0.25, duration / 2, max(0.25, duration - 0.5))):
-                sample = directory / f"episode-{number}-sample-{j}.png"
+                sample = directory / f"{prefix}episode-{number}-sample-{j}.png"
                 extract_frame(output, sample, seconds)
                 samples.append(sample.name)
             production.update(

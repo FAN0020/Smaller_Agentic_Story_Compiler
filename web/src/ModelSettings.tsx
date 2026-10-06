@@ -155,22 +155,35 @@ export default function ModelSettings({
                   set(
                     "image_model",
                     e.target.value === "local"
-                      ? "stabilityai/sd-turbo"
+                      ? "black-forest-labs/FLUX.2-klein-4B"
                       : "gpt-image-1",
                   );
                 }}
               >
-                <option value="local">Local · Stable Diffusion Turbo</option>
+                <option value="local">Local image model</option>
                 <option value="openai">OpenAI image API</option>
               </select>
             </label>
             <label className="field">
               Image model
-              <input
-                value={form.image_model}
-                readOnly={form.image_provider === "local"}
-                onChange={(e) => set("image_model", e.target.value)}
-              />
+              {form.image_provider === "local" ? (
+                <select
+                  value={form.image_model}
+                  onChange={(e) => set("image_model", e.target.value)}
+                >
+                  <option value="black-forest-labs/FLUX.2-klein-4B">
+                    FLUX.2 Klein · scenes & references
+                  </option>
+                  <option value="stabilityai/sd-turbo">
+                    SD-Turbo · reference studies only
+                  </option>
+                </select>
+              ) : (
+                <input
+                  value={form.image_model}
+                  onChange={(e) => set("image_model", e.target.value)}
+                />
+              )}
             </label>
           </div>
         </section>

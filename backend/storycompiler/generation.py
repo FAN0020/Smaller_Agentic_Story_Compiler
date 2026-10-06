@@ -12,6 +12,7 @@ import httpx
 from PIL import Image, ImageOps
 
 from .providers import ProviderError
+from .settings import LOCAL_IMAGE_MODELS
 
 
 class Cancelled(RuntimeError):
@@ -34,7 +35,7 @@ class LocalGenerator:
         self.cancelled = cancelled
 
     def _run(self, kind, prompt, output, seed, **options):
-        model = "sd-turbo" if kind == "image" else "ltx-video"
+        model = LOCAL_IMAGE_MODELS[options["model_id"]] if kind == "image" else "ltx-video"
         if not (self.root / "models" / model / "READY").exists():
             raise ValueError(
                 f"Local {kind} model is not installed. Run .venv/bin/python scripts/setup_models.py {kind}"
@@ -83,8 +84,16 @@ class LocalGenerator:
         partial.replace(output)
         return output
 
-    def image(self, prompt, output, seed, reference=None):
-        return self._run("image", prompt, output, seed, reference=str(reference) if reference else None)
+    def image(self, prompt, output, seed, references=None, model="black-forest-labs/FLUX.2-klein-4B"):
+        if model not in LOCAL_IMAGE_MODELS:
+            raise ValueError("Choose an installed supported local image model")
+        if references and model == "stabilityai/sd-turbo":
+            raise ValueError(
+                "SD-Turbo does not support multi-reference scene composition. Choose FLUX.2 Klein or an image API."
+            )
+        return self._run(
+            "image", prompt, output, seed, model_id=model, references=[str(p) for p in references or []]
+        )
 
     def video(self, prompt, reference, output, seed, steps, portrait=False):
         return self._run(

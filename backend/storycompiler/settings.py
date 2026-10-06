@@ -12,6 +12,11 @@ from pydantic import Field, field_validator
 
 from .domain import Contract
 
+LOCAL_IMAGE_MODELS = {
+    "black-forest-labs/FLUX.2-klein-4B": "flux2-klein-4b",
+    "stabilityai/sd-turbo": "sd-turbo",
+}
+
 
 class ModelSettings(Contract):
     llm_provider: Literal["ollama", "openai", "compatible"] = "ollama"
@@ -19,7 +24,7 @@ class ModelSettings(Contract):
     llm_reasoning: bool = False
     llm_endpoint: str = "http://127.0.0.1:11434"
     image_provider: Literal["local", "openai"] = "local"
-    image_model: str = "stabilityai/sd-turbo"
+    image_model: str = "black-forest-labs/FLUX.2-klein-4B"
     video_provider: Literal["local", "openai", "animatic"] = "local"
     video_model: str = "Lightricks/LTX-Video-0.9.1"
     voice_provider: Literal["system", "openai", "none"] = "system"

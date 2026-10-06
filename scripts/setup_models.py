@@ -12,10 +12,11 @@ import shutil
 from pathlib import Path
 
 IMAGE_REVISION = "b261bac6fd2cf515557d5d0707481eafa0485ec2"
+FLUX_REVISION = "e7b7dc27f91deacad38e78976d1f2b499d76a294"
 VIDEO_REVISION = "0dfb9a9b26f48256bbafc4e9fa337445ff76dc1c"
 
 
-def install_image(root):
+def install_fast_image(root):
     from huggingface_hub import snapshot_download
 
     target = root / "sd-turbo"
@@ -27,6 +28,30 @@ def install_image(root):
     )
     (target / "READY").write_text(f"stabilityai/sd-turbo; {IMAGE_REVISION}; fp16\n")
     print("Image model installed:", target, flush=True)
+
+
+def install_image(root):
+    from huggingface_hub import snapshot_download
+
+    target = root / "flux2-klein-4b"
+    snapshot_download(
+        "black-forest-labs/FLUX.2-klein-4B",
+        revision=FLUX_REVISION,
+        local_dir=target,
+        allow_patterns=[
+            "model_index.json",
+            "scheduler/*",
+            "text_encoder/*",
+            "tokenizer/*",
+            "transformer/*",
+            "vae/*",
+            "LICENSE.md",
+        ],
+        max_workers=2,
+        token=False,
+    )
+    (target / "READY").write_text(f"black-forest-labs/FLUX.2-klein-4B; {FLUX_REVISION}; bfloat16\n")
+    print("Multi-reference image model installed:", target, flush=True)
 
 
 def install_video(root):
@@ -75,7 +100,7 @@ def install_video(root):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("kind", choices=["image", "video", "all", "status"])
+    parser.add_argument("kind", choices=["image", "fast-image", "video", "all", "status"])
     parser.add_argument(
         "--root", type=Path, default=Path(os.environ.get("STORY_STUDIO_HOME", ".studio")) / "models"
     )
@@ -85,13 +110,16 @@ if __name__ == "__main__":
         print(
             json.dumps(
                 {
-                    "image": (args.root / "sd-turbo/READY").exists(),
+                    "image": (args.root / "flux2-klein-4b/READY").exists(),
+                    "fast_image": (args.root / "sd-turbo/READY").exists(),
                     "video": (args.root / "ltx-video/READY").exists(),
                     "free_gib": round(shutil.disk_usage(args.root).free / 1024**3, 1),
                 }
             )
         )
     else:
+        if args.kind == "fast-image":
+            install_fast_image(args.root)
         if args.kind in ("image", "all"):
             install_image(args.root)
         if args.kind in ("video", "all"):

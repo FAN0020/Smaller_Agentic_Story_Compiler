@@ -340,16 +340,17 @@ export default function ProductionView({
                       ))}
                     </div>
                   )}
-                  {plan.scenes.length > 0 && !p.productions[String(n)]?.clips && (
-                    <PlanEditor
-                      number={n}
-                      plan={plan}
-                      disabled={busy}
-                      save={(revision) =>
-                        act(`/plans/${n}`, { ...revision, _method: "PUT" })
-                      }
-                    />
-                  )}
+                  {plan.scenes.length > 0 &&
+                    !p.productions[String(n)]?.clips && (
+                      <PlanEditor
+                        number={n}
+                        plan={plan}
+                        disabled={busy}
+                        save={(revision) =>
+                          act(`/plans/${n}`, { ...revision, _method: "PUT" })
+                        }
+                      />
+                    )}
                 </div>
               );
             })}
@@ -403,6 +404,26 @@ export default function ProductionView({
               <ArrowRight size={17} />
             </Button>
           </section>
+          {selected
+            .filter((n) => p.productions[String(n)])
+            .map((n) => (
+              <div className="action-row" key={`take-${n}`}>
+                <p>
+                  A new take keeps the previous artifacts and uses your current
+                  model settings.
+                </p>
+                <Button
+                  secondary
+                  small
+                  disabled={busy}
+                  onClick={() =>
+                    void act(`/productions/${n}/new-take`, {}).catch(() => {})
+                  }
+                >
+                  New take · Episode {n}
+                </Button>
+              </div>
+            ))}
           {Object.values(p.productions).some((v: any) => v.file) && (
             <div className="action-row">
               <span>Rendered episodes are ready for viewing review.</span>

@@ -3,6 +3,7 @@
 import os
 import shutil
 import threading
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
@@ -21,7 +22,7 @@ from .jobs import JobWorker
 from .planning import Planner
 from .production import Producer, assert_production_approved
 from .review import revise_plan
-from .settings import SettingsStore
+from .settings import LOCAL_IMAGE_MODELS, SettingsStore
 from .storage import Repository
 from .validation import assert_references_frozen
 
@@ -144,7 +145,9 @@ def create_app(root: Path | None = None, start_worker=True):
     def provider_status():
         configured = settings.get()
         local = {
-            "image": (root / "models/sd-turbo/READY").exists(),
+            "image": (
+                root / "models" / LOCAL_IMAGE_MODELS.get(configured.image_model, "unavailable") / "READY"
+            ).exists(),
             "video": (root / "models/ltx-video/READY").exists(),
             "ffmpeg": bool(shutil.which("ffmpeg")),
             "system_voice": bool(shutil.which("say")),
@@ -231,6 +234,32 @@ def create_app(root: Path | None = None, start_worker=True):
             p = repo.get_project(id)
             validate_numbers(p, [number])
             return revise_plan(repo, p, number, revision)
+
+    @app.post("/api/projects/{id}/productions/{number}/new-take")
+    def new_take(id: str, number: int):
+        with lock:
+            idle(id)
+            p = repo.get_project(id)
+            validate_numbers(p, [number])
+            prior = p["productions"].pop(str(number), None)
+            if prior is None:
+                raise ValueError("No existing take to archive")
+            p.setdefault("production_takes", {}).setdefault(str(number), []).append(prior)
+            p["audit"].append({"action": "new_production_take", "episode": number, "at": time.time()})
+            p["status"] = "plan_review"
+            repo.save_project(p)
+            for job in repo.jobs(id):
+                if (
+                    job["kind"] == "render"
+                    and number in job["payload"].get("numbers", [])
+                    and job["status"] in ("cancelled", "interrupted", "failed", "review_required")
+                ):
+                    repo.update_job(
+                        job["id"],
+                        status="superseded",
+                        message="Previous take archived; produce a new take with current settings",
+                    )
+            return p
 
     @app.post("/api/projects/{id}/approve")
     def approve(id: str, body: Approval):

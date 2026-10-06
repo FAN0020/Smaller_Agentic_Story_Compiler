@@ -119,8 +119,22 @@ def test_failed_local_generation_does_not_publish_partial_artifact(tmp_path, mon
 
     monkeypatch.setattr("storycompiler.generation.subprocess.Popen", FailedProcess)
     with pytest.raises(ProviderError):
-        LocalGenerator(tmp_path, lambda: False).image("A tree", output, 42)
+        LocalGenerator(tmp_path, lambda: False).image("A tree", output, 42, model="stabilityai/sd-turbo")
     assert not output.exists(), "Resume must not mistake an incomplete image for a checkpoint"
+
+
+def test_local_reference_generation_uses_native_multi_image_inputs(tmp_path, monkeypatch):
+    from storycompiler.generation import LocalGenerator
+
+    generator = LocalGenerator(tmp_path, lambda: False)
+    calls = []
+    monkeypatch.setattr(generator, "_run", lambda *args, **kwargs: calls.append(kwargs))
+    refs = [tmp_path / f"character-{n}.png" for n in range(6)]
+    generator.image("All six subjects in one scene", tmp_path / "frame.png", 42, references=refs)
+    assert calls[0]["references"] == [str(ref) for ref in refs]
+    assert calls[0]["model_id"] == "black-forest-labs/FLUX.2-klein-4B"
+    with pytest.raises(ValueError, match="multi-reference"):
+        generator.image("Scene", tmp_path / "frame.png", 42, references=refs, model="stabilityai/sd-turbo")
 
 
 @pytest.mark.parametrize("stage,thinking", [("scene-director", True), ("narrative-critic", False)])

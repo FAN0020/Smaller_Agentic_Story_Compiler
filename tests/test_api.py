@@ -164,3 +164,28 @@ def test_plan_revision_invalidates_approval_and_rejects_invalid_timing(tmp_path)
         assert c.put(path, json={"scenes": scenes, "shots": shots}).status_code == 200
         shots[0]["source_event_ids"] = ["ev2"]
         assert c.put(path, json={"scenes": scenes, "shots": shots}).status_code == 409
+
+
+def test_new_take_preserves_previous_artifacts_and_approved_plan(tmp_path):
+    with client(tmp_path) as c:
+        repo = c.app.state.repo
+        p = repo.create_project("Takes", "A small story.", {})
+        p["episodes"] = [{"number": 1}]
+        p["plans"]["1"] = {"hash": "plan", "approved_hash": "plan"}
+        prior = {
+            "file": "episode-1.mp4",
+            "clips": {"shot1": {"file": "ep1-001.mp4"}},
+            "settings": {"image_model": "old"},
+        }
+        p["productions"]["1"] = prior
+        repo.save_project(p)
+        job = repo.enqueue(p["id"], "render", {"numbers": [1]})
+        repo.update_job(job["id"], status="cancelled")
+        result = c.post(f"/api/projects/{p['id']}/productions/1/new-take")
+        assert result.status_code == 200, result.text
+        updated = result.json()
+        assert "1" not in updated["productions"]
+        assert updated["production_takes"]["1"] == [prior]
+        assert updated["plans"]["1"]["approved_hash"] == "plan"
+        assert updated["audit"][-1]["action"] == "new_production_take"
+        assert c.post(f"/api/jobs/{job['id']}/resume").status_code == 409

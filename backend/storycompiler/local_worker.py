@@ -15,7 +15,29 @@ def main():
     output = Path(request["output"])
     device = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
     generator = torch.Generator("cpu").manual_seed(request["seed"])
-    if request["kind"] == "image":
+    if request["kind"] == "image" and request.get("model_id") == "black-forest-labs/FLUX.2-klein-4B":
+        from diffusers import Flux2KleinPipeline
+
+        pipe = Flux2KleinPipeline.from_pretrained(
+            root / "flux2-klein-4b", torch_dtype=torch.bfloat16, local_files_only=True
+        )
+        pipe.to(device)
+        pipe.vae.enable_tiling()
+        if len(pipe.tokenizer(request["prompt"], add_special_tokens=False)["input_ids"]) > 960:
+            raise ValueError("FLUX prompt exceeds its text budget; simplify the shot explicitly")
+        refs = [Image.open(path).convert("RGB") for path in request.get("references", [])]
+        result = pipe(
+            image=refs or None,
+            prompt=request["prompt"],
+            height=512,
+            width=512,
+            num_inference_steps=4,
+            guidance_scale=1.0,
+            max_sequence_length=1024,
+            generator=torch.Generator(device=device).manual_seed(request["seed"]),
+        ).images[0]
+        result.save(output)
+    elif request["kind"] == "image":
         from diffusers import AutoPipelineForImage2Image, AutoPipelineForText2Image
 
         pipe = AutoPipelineForText2Image.from_pretrained(
