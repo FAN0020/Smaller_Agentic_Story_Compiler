@@ -46,3 +46,63 @@ def test_missing_local_model_is_actionable_without_paid_fallback(tmp_path):
 
     with pytest.raises(ValueError, match="setup_models"):
         LocalGenerator(tmp_path, lambda: False).image("A tree", tmp_path / "out.png", 42)
+
+
+def test_narration_mix_keeps_original_video_sound(tmp_path):
+    import math
+    import wave
+    from array import array
+
+    from storycompiler.media import normalize_clip, run
+
+    source, voice, output = (tmp_path / n for n in ("source.mp4", "voice.wav", "mixed.mp4"))
+    run(
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=blue:s=160x90:r=24:d=2",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=400:duration=2",
+            "-c:v",
+            "libx264",
+            "-c:a",
+            "aac",
+            "-shortest",
+            str(source),
+        ]
+    )
+    run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=800:duration=1", str(voice)])
+    normalize_clip(source, output, 2, (160, 90), voice)
+    decoded = tmp_path / "decoded.wav"
+    run(
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-i",
+            str(output),
+            "-ac",
+            "1",
+            "-ar",
+            "24000",
+            "-c:a",
+            "pcm_s16le",
+            str(decoded),
+        ]
+    )
+    with wave.open(str(decoded)) as audio:
+        samples = array("h", audio.readframes(12000))
+
+    def energy(hz):
+        real = sum(v * math.cos(2 * math.pi * hz * i / 24000) for i, v in enumerate(samples))
+        imaginary = sum(v * math.sin(2 * math.pi * hz * i / 24000) for i, v in enumerate(samples))
+        return real * real + imaginary * imaginary
+
+    assert energy(400) > energy(600) * 100
+    assert energy(800) > energy(600) * 100

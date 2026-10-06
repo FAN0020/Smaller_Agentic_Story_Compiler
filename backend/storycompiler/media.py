@@ -87,11 +87,16 @@ def normalize_clip(source: Path, output: Path, seconds: int, size=(768, 432), na
         rate = max(1, duration / max(0.1, seconds - 0.15))
         if rate > 1.35:
             raise ValueError("Narration is too long for the shot. Shorten it in the plan before rendering.")
+        audio_filter = f"[1:a]atempo={rate},apad"
+        if has_audio:
+            audio_filter += "[voice];[0:a][voice]amix=inputs=2:duration=longest:weights='0.35 1':normalize=0,alimiter=limit=0.95[a]"
+        else:
+            audio_filter += "[a]"
         cmd += [
             "-i",
             str(narration),
             "-filter_complex",
-            f"[1:a]atempo={rate},apad[a]",
+            audio_filter,
             "-map",
             "0:v:0",
             "-map",
