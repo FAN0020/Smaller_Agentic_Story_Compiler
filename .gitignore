@@ -10,4 +10,5 @@ web/dist/
 output/
 .env
 *.log
-
+.playwright-cli/
+web/*.tsbuildinfo
