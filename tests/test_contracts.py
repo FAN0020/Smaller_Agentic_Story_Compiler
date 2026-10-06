@@ -79,3 +79,51 @@ def test_episode_duration_and_provider_capabilities_are_hard_gates():
     assert v.validate_timeline([shot], 60, max_clip_seconds=8)
     good = [c.ShotPlan(**shot_payload()).model_copy(update={"id": f"s{i}"}) for i in range(15)]
     assert v.validate_timeline(good, 60, max_clip_seconds=8) == []
+
+
+def test_scene_boundaries_reject_state_reset_before_expensive_shot_planning():
+    _c, v = api()
+    assert hasattr(v, "validate_scenes"), "Scene gate is missing"
+    scenes = [
+        {
+            "id": "a",
+            "duration": 28,
+            "source_event_ids": ["ev1"],
+            "characters": ["c1"],
+            "location_id": "l1",
+            "start_state": {"paw": "closed"},
+            "end_state": {"paw": "open"},
+            "transition_reason": "",
+        },
+        {
+            "id": "b",
+            "duration": 32,
+            "source_event_ids": ["ev2"],
+            "characters": ["c1"],
+            "location_id": "l1",
+            "start_state": {"paw": "closed"},
+            "end_state": {"paw": "open"},
+            "transition_reason": "",
+        },
+    ]
+    errors = v.validate_scenes(scenes, 60, {"ev1", "ev2"}, {"c1"}, {"l1"})
+    assert any("continuity" in e for e in errors)
+
+
+def test_shot_context_does_not_expose_other_scenes_events():
+    from storycompiler import planning
+
+    assert hasattr(planning, "shot_context"), "Scene-scoped context is missing"
+    result = planning.shot_context(
+        {
+            "episode": {"summary": "Secret reveal"},
+            "source_events": [
+                {"id": "ev1", "summary": "Before reveal"},
+                {"id": "ev2", "summary": "Secret revealed"},
+            ],
+            "bible": {},
+        },
+        {"source_event_ids": ["ev1"]},
+    )
+    assert [e["id"] for e in result["source_events"]] == ["ev1"]
+    assert "episode" not in result

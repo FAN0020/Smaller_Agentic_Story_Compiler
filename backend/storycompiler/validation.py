@@ -3,6 +3,26 @@
 from .contracts import ShotPlan
 
 
+def validate_scenes(scenes, target_seconds, event_ids, character_ids, location_ids):
+    errors = []
+    if sum(s["duration"] for s in scenes) != target_seconds or any(s["duration"] % 4 for s in scenes):
+        errors.append(f"Scene durations must sum to {target_seconds}, in multiples of 4 seconds")
+    if {e for s in scenes for e in s["source_event_ids"]} != event_ids:
+        errors.append("Scenes must cover all and only assigned episode events")
+    if len({s["id"] for s in scenes}) != len(scenes):
+        errors.append("Scene IDs must be unique")
+    previous = None
+    for s in scenes:
+        if not set(s["characters"]) <= character_ids or s["location_id"] not in location_ids:
+            errors.append("Use only canonical character/location IDs")
+        if previous and not s.get("transition_reason") and s["start_state"] != previous["end_state"]:
+            errors.append(
+                f"Scene {s['id']}: continuity start_state must exactly inherit previous end_state {previous['end_state']}"
+            )
+        previous = s
+    return errors
+
+
 def validate_shots(
     shots: list[ShotPlan],
     bible_hash: str,

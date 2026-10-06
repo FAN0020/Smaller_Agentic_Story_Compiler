@@ -8,7 +8,7 @@ from pathlib import Path
 
 def main():
     import torch
-    from PIL import Image
+    from PIL import Image, ImageOps
 
     request = json.loads(Path(sys.argv[1]).read_text())
     root = Path(request["models"])
@@ -56,13 +56,17 @@ def main():
         from diffusers import LTXImageToVideoPipeline
         from diffusers.utils import export_to_video
 
+        generator = torch.Generator(device=device).manual_seed(request["seed"])
+
         pipe = LTXImageToVideoPipeline.from_pretrained(
             root / "ltx-video", torch_dtype=torch.bfloat16, local_files_only=True
         )
         pipe.to(device)
         pipe.vae.enable_tiling()
         width, height = request.get("size", [512, 288])
-        reference = Image.open(request["reference"]).convert("RGB").resize((width, height))
+        reference = ImageOps.fit(Image.open(request["reference"]).convert("RGB"), (width, height))
+        if len(pipe.tokenizer(request["prompt"], add_special_tokens=False)["input_ids"]) > 1022:
+            raise ValueError("Video prompt exceeds the 1024-token budget; simplify the shot explicitly")
         result = pipe(
             image=reference,
             prompt=request["prompt"],

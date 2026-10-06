@@ -6,7 +6,13 @@ import time
 
 from .contracts import BibleDraft, ChunkAnalysis, CriticReport, EpisodeBatch, SceneBatch, ShotBatch, ShotPlan
 from .domain import STYLE_BY_ID, CreativeBrief, chunk_source, fingerprint
-from .validation import validate_outline, validate_shots, validate_timeline
+from .validation import validate_outline, validate_scenes, validate_shots, validate_timeline
+
+
+def shot_context(context, scene):
+    return {k: v for k, v in context.items() if k not in ("episode", "source_events")} | {
+        "source_events": [e for e in context["source_events"] if e["id"] in scene["source_event_ids"]]
+    }
 
 
 class ReviewRequired(ValueError):
@@ -197,26 +203,37 @@ class Planner:
                 "target_seconds": brief.target_seconds,
             }
             plan = p["plans"].get(key, {"scenes": [], "shots": [], "status": "planning", "attempts": []})
+            scene_errors = (
+                validate_scenes(
+                    plan["scenes"],
+                    brief.target_seconds,
+                    set(episode["source_event_ids"]),
+                    {c["id"] for c in bible["characters"]},
+                    {l["id"] for l in bible["locations"]},
+                )
+                if plan["scenes"]
+                else []
+            )
+            if scene_errors:
+                plan.setdefault("superseded_scenes", []).append(
+                    {"scenes": plan["scenes"], "errors": scene_errors}
+                )
+                plan["scenes"] = []
+                plan["shots"] = []
             if not plan["scenes"]:
-                errors = []
+                errors = scene_errors
                 for attempt in range(3):
                     self.progress(index / len(numbers), f"Designing Episode {number} scenes…")
                     scenes = self.llm.generate(
                         "scene-director", {**context, "repair_feedback": errors}, SceneBatch
                     )
-                    errors = []
-                    if sum(s.duration for s in scenes.scenes) != brief.target_seconds:
-                        errors.append(f"Scene durations must sum to {brief.target_seconds}")
-                    if any(s.duration % 4 for s in scenes.scenes):
-                        errors.append("Scene durations must be multiples of 4 seconds")
-                    actual = {e for s in scenes.scenes for e in s.source_event_ids}
-                    if actual != set(episode["source_event_ids"]):
-                        errors.append("Scenes must cover all and only episode events")
-                    for s in scenes.scenes:
-                        if s.location_id not in {l["id"] for l in bible["locations"]} or not set(
-                            s.characters
-                        ) <= {c["id"] for c in bible["characters"]}:
-                            errors.append("Use only canonical character/location IDs")
+                    errors = validate_scenes(
+                        [s.model_dump() for s in scenes.scenes],
+                        brief.target_seconds,
+                        set(episode["source_event_ids"]),
+                        {c["id"] for c in bible["characters"]},
+                        {l["id"] for l in bible["locations"]},
+                    )
                     if not errors:
                         break
                 if errors:
@@ -231,6 +248,7 @@ class Planner:
                 if any(s["scene_id"] == scene["id"] for s in plan["shots"]):
                     continue
                 errors = []
+                shots = []
                 for attempt in range(3):
                     self.progress(
                         (index + scene_index / len(plan["scenes"])) / len(numbers),
@@ -239,11 +257,12 @@ class Planner:
                     result = self.llm.generate(
                         "shot-director",
                         {
-                            **context,
+                            **shot_context(context, scene),
                             "scene": scene,
                             "shot_count": scene["duration"] // 4,
                             "previous_shot": plan["shots"][-1:] or [],
                             "repair_feedback": errors,
+                            "previous_candidate": [s.model_dump() for s in shots] if attempt else None,
                         },
                         ShotBatch,
                     )
@@ -263,7 +282,9 @@ class Planner:
                         shots[0].start_state != scene["start_state"]
                         or shots[-1].end_state != scene["end_state"]
                     ):
-                        errors.append("First start_state and last end_state must equal scene boundaries")
+                        errors.append(
+                            f"First start_state must be EXACTLY {scene['start_state']}; last end_state must be EXACTLY {scene['end_state']}. Do not enact later events."
+                        )
                     plan["attempts"].append(
                         {
                             "scene": scene["id"],
