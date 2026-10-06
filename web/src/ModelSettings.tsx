@@ -326,7 +326,7 @@ export default function ModelSettings({
         </section>
         <section className="settings-section">
           <div className="section-title">
-            <h3>Local readiness</h3>
+            <h3>Local readiness · saved settings</h3>
             <button
               className="text-button"
               onClick={() =>
@@ -362,6 +362,8 @@ export default function ModelSettings({
             <summary>Install local models</summary>
             <p>Run from the project folder:</p>
             <pre>.venv/bin/python scripts/setup_models.py all</pre>
+            <p>Optional fast reference studies:</p>
+            <pre>.venv/bin/python scripts/setup_models.py fast-image</pre>
             <p className="caption">
               Downloads official checkpoints. No per-generation API charge;
               model license terms still apply.
