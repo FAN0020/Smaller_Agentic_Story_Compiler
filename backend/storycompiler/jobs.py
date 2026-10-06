@@ -52,7 +52,9 @@ class JobWorker:
                 self.settings, job["payload"].get("model_settings", self.settings.get().model_dump())
             )
             llm = JsonLLM(frozen_settings, record=record)
-            planner = Planner(self.repo, llm, progress)
+            planner = Planner(
+                self.repo, llm, progress, narration=frozen_settings.get().voice_provider != "none"
+            )
             producer = Producer(self.repo, frozen_settings, progress, cancelled)
             options = job["payload"]
             kind = job["kind"]

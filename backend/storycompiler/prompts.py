@@ -10,6 +10,13 @@ Keep identities and IDs from the approved context. Do not claim to inspect rende
 Be concise: use short useful sentences. Empty optional lists/strings are valid when irrelevant."""
 
 STAGES = {
+    "audio-director": """Write a concise spoken track aligned with the approved shots. Return one line
+for EVERY shot ID, in order. Each line is at most EIGHT words; empty text is allowed for intentional
+silence. Use a consistent narrator to make cause, dialogue and emotion understandable. Paraphrase
+source dialogue naturally when too long. Never add speaker labels, parenthesized acting instructions
+or sound-effect descriptions to spoken text. Do not narrate an event before its assigned shot.
+Preserve source facts and age policy. Avoid stating invisible details as though visible in the frame.
+The full text-plan critic will review this track before user approval.""",
     "narrative-critic": """Review ONLY the supplied narrative candidate at its stated layer. Compare to
 the ORIGINAL SOURCE EXCERPTS first; summaries and previous plans may contain mistakes.
 Check who does what to whom, who sleeps/wakes, cause and effect, chronology, relationships, motivation,

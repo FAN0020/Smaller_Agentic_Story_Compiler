@@ -5,6 +5,7 @@ import re
 import time
 
 from .contracts import (
+    AudioScript,
     BibleDraft,
     BoundaryBatch,
     ChunkAnalysis,
@@ -117,9 +118,20 @@ class ReviewRequired(ValueError):
     pass
 
 
+def apply_audio_script(shots, lines):
+    mapping = {line["shot_id"]: line["text"] for line in lines}
+    if len(mapping) != len(lines) or set(mapping) != {s["id"] for s in shots}:
+        raise ValueError("The audio script must include every shot exactly once")
+    if any(len(text.split()) > 8 for text in mapping.values()):
+        raise ValueError("Keep each four-second spoken line to at most eight words")
+    for shot in shots:
+        shot["narration"] = mapping[shot["id"]]
+
+
 class Planner:
-    def __init__(self, repo, llm, progress):
+    def __init__(self, repo, llm, progress, narration=True):
         self.repo, self.llm, self.progress = repo, llm, progress
+        self.narration = narration
 
     def checkpoint(self, p, message, progress=0):
         self.repo.save_project(p)
@@ -551,6 +563,29 @@ class Planner:
             if errors:
                 self.checkpoint(p, "Plan continuity requires review")
                 raise ReviewRequired("; ".join(errors[:5]))
+            if self.narration:
+                basis = fingerprint([{k: v for k, v in s.items() if k != "narration"} for s in plan["shots"]])
+                if plan.get("audio_basis") != basis:
+                    audio_errors = []
+                    for _ in range(3):
+                        self.progress(
+                            (index + 0.85) / len(numbers), f"Writing Episode {number} spoken track…"
+                        )
+                        script = self.llm.generate(
+                            "audio-director",
+                            {**context, "shots": plan["shots"], "repair_feedback": audio_errors},
+                            AudioScript,
+                        )
+                        try:
+                            apply_audio_script(plan["shots"], [line.model_dump() for line in script.lines])
+                            audio_errors = []
+                            break
+                        except ValueError as e:
+                            audio_errors = [str(e)]
+                    if audio_errors:
+                        raise ReviewRequired("; ".join(audio_errors))
+                    plan["audio_basis"] = basis
+                    self.checkpoint(p, f"Episode {number}: spoken track saved")
             self.progress((index + 0.9) / len(numbers), f"Checking Episode {number} direction…")
             critique = self.llm.generate(
                 "plan-critic", {**context, "scenes": plan["scenes"], "shots": plan["shots"]}, CriticReport

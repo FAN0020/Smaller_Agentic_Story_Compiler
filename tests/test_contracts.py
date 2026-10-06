@@ -237,3 +237,24 @@ def test_shot_agent_sees_only_assigned_source_passages_and_visual_canon():
     assert "pleaded" not in str(result)
     assert "Catches" not in str(result)
     assert "golden" in str(result) and "The lion was asleep." in str(result)
+
+
+def test_audio_script_is_complete_and_fits_each_generation_unit():
+    from storycompiler import planning
+
+    assert hasattr(planning, "apply_audio_script")
+    shots = [shot_payload() | {"id": "a"}, shot_payload() | {"id": "b"}]
+    planning.apply_audio_script(
+        shots, [{"shot_id": "a", "text": "The lion slept peacefully."}, {"shot_id": "b", "text": ""}]
+    )
+    assert shots[0]["narration"] == "The lion slept peacefully."
+    with pytest.raises(ValueError, match="every shot"):
+        planning.apply_audio_script(shots, [{"shot_id": "a", "text": ""}])
+    with pytest.raises(ValueError, match="eight"):
+        planning.apply_audio_script(
+            shots,
+            [
+                {"shot_id": "a", "text": "one two three four five six seven eight nine"},
+                {"shot_id": "b", "text": ""},
+            ],
+        )

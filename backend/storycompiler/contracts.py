@@ -243,6 +243,15 @@ class ShotDraftBatch(Contract):
     shots: list[ShotDraft] = Field(min_length=1)
 
 
+class AudioLine(Contract):
+    shot_id: str
+    text: str
+
+
+class AudioScript(Contract):
+    lines: list[AudioLine] = Field(min_length=1)
+
+
 class CriticFinding(Contract):
     severity: Literal["error", "warning"]
     artifact_id: str
