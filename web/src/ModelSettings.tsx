@@ -6,10 +6,14 @@ import { Button, Tag } from "./components";
 
 export default function ModelSettings({
   initial,
+  characters = [],
+  projectId = "",
   onClose,
   onSaved,
 }: {
   initial: Data;
+  characters?: Data[];
+  projectId?: string;
   onClose: () => void;
   onSaved: (s: Data) => void;
 }) {
@@ -59,7 +63,6 @@ export default function ModelSettings({
     >
       <div className="dialog-head">
         <div>
-          <p className="eyebrow">YOUR CREATIVE TOOLKIT</p>
           <h2 id="models-title">Models & production</h2>
         </div>
         <button
@@ -136,10 +139,31 @@ export default function ModelSettings({
               <input
                 type="checkbox"
                 checked={!!form.llm_reasoning}
+                disabled={
+                  !!status?.llm?.capabilities?.[form.llm_model] &&
+                  !status.llm.capabilities[form.llm_model].includes("thinking")
+                }
                 onChange={(e) => set("llm_reasoning", e.target.checked)}
               />
               Reasoning for episode, scene and shot planning · supported models
               only; takes longer
+            </label>
+          )}
+          {form.llm_provider === "ollama" && (
+            <label className="field">
+              Context size
+              <select
+                value={form.llm_context_tokens || 16384}
+                onChange={(e) =>
+                  set("llm_context_tokens", Number(e.target.value))
+                }
+              >
+                <option value={4096}>4K · compact scenes</option>
+                <option value={8192}>8K · lower memory</option>
+                <option value={16384}>16K · balanced</option>
+                <option value={32768}>32K · more memory</option>
+                <option value={65536}>64K · large machines</option>
+              </select>
             </label>
           )}
         </section>
@@ -155,7 +179,7 @@ export default function ModelSettings({
                   set(
                     "image_model",
                     e.target.value === "local"
-                      ? "black-forest-labs/FLUX.2-klein-4B"
+                      ? "mlx-community/flux2-klein-4b-4bit"
                       : "gpt-image-1",
                   );
                 }}
@@ -171,8 +195,11 @@ export default function ModelSettings({
                   value={form.image_model}
                   onChange={(e) => set("image_model", e.target.value)}
                 >
+                  <option value="mlx-community/flux2-klein-4b-4bit">
+                    FLUX.2 Klein · 4-bit Apple Silicon
+                  </option>
                   <option value="black-forest-labs/FLUX.2-klein-4B">
-                    FLUX.2 Klein · scenes & references
+                    FLUX.2 Klein · full precision, 32 GB+
                   </option>
                   <option value="stabilityai/sd-turbo">
                     SD-Turbo · reference studies only
@@ -237,31 +264,111 @@ export default function ModelSettings({
           )}
           <div className="field-row">
             <label className="field">
-              Narration
+              Speech provider
               <select
                 value={form.voice_provider}
                 onChange={(e) => {
                   set("voice_provider", e.target.value);
+                  set("character_voices", {});
                   set(
                     "voice",
-                    e.target.value === "system" ? "Samantha" : "alloy",
+                    e.target.value === "kokoro"
+                      ? "af_heart"
+                      : e.target.value === "system"
+                        ? "Samantha"
+                        : "alloy",
                   );
                 }}
               >
+                <option value="kokoro">Local · Kokoro neural voices</option>
                 <option value="system">Local · macOS voice</option>
                 <option value="openai">OpenAI speech API</option>
-                <option value="none">No synthesized narration</option>
+                <option value="none">No synthesized speech</option>
               </select>
             </label>
             <label className="field">
-              Voice
-              <input
-                value={form.voice}
-                disabled={form.voice_provider === "none"}
-                onChange={(e) => set("voice", e.target.value)}
-              />
+              Narrator voice
+              {form.voice_provider === "kokoro" ? (
+                <select
+                  value={form.voice}
+                  onChange={(e) => set("voice", e.target.value)}
+                >
+                  {Object.entries(
+                    status?.local?.voices || {
+                      af_heart: "Heart · warm American narrator",
+                    },
+                  ).map(([id, label]) => (
+                    <option value={id} key={id}>
+                      {String(label)}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  value={form.voice}
+                  disabled={form.voice_provider === "none"}
+                  onChange={(e) => set("voice", e.target.value)}
+                />
+              )}
             </label>
           </div>
+          {form.voice_provider === "kokoro" && (
+            <p className="caption">
+              Neural English voices run on CPU. Complete sentences flow across
+              cuts; narration and dialogue are timed before animation. Delivery
+              comes from voice, punctuation and pace; these voices do not
+              support arbitrary emotion instructions.
+            </p>
+          )}
+          {characters.length > 0 && form.voice_provider !== "none" && (
+            <details>
+              <summary>Character voices for this story</summary>
+              {characters.map((character) => (
+                <label className="field" key={character.id}>
+                  {character.name}
+                  {form.voice_provider === "kokoro" ? (
+                    <select
+                      value={
+                        form.character_voices?.[
+                          `${projectId}/${character.id}`
+                        ] || ""
+                      }
+                      onChange={(e) =>
+                        set("character_voices", {
+                          ...form.character_voices,
+                          [`${projectId}/${character.id}`]: e.target.value,
+                        })
+                      }
+                    >
+                      <option value="">Automatic distinct voice</option>
+                      {Object.entries(status?.local?.voices || {}).map(
+                        ([id, label]) => (
+                          <option key={id} value={id}>
+                            {String(label)}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  ) : (
+                    <input
+                      value={
+                        form.character_voices?.[
+                          `${projectId}/${character.id}`
+                        ] || ""
+                      }
+                      placeholder="Automatic"
+                      onChange={(e) =>
+                        set("character_voices", {
+                          ...form.character_voices,
+                          [`${projectId}/${character.id}`]: e.target.value,
+                        })
+                      }
+                    />
+                  )}
+                </label>
+              ))}
+            </details>
+          )}
           <div className="field-row">
             <label className="field">
               Generation call budget
@@ -349,8 +456,13 @@ export default function ModelSettings({
               <Tag success={status.local.video}>
                 Video {status.local.video ? "installed" : "not installed"}
               </Tag>
+              <Tag success={status.local.speech}>
+                Neural speech{" "}
+                {status.local.speech ? "installed" : "not installed"}
+              </Tag>
               <Tag success={status.local.ffmpeg}>FFmpeg</Tag>
               <p className="caption">
+                {status.local.resources?.available} GiB available memory ·{" "}
                 {status.local.free_gib} GiB free disk space. Heavy local jobs
                 run one at a time.
               </p>
@@ -358,10 +470,26 @@ export default function ModelSettings({
           ) : (
             <p>Checking this machine…</p>
           )}
+          {form.image_provider === "local" &&
+            status?.local?.image_options?.find(
+              (m: Data) => m.id === form.image_model,
+            )?.resource_warning && (
+              <p className="warning-box">
+                {
+                  status.local.image_options.find(
+                    (m: Data) => m.id === form.image_model,
+                  ).resource_warning
+                }
+              </p>
+            )}
           <details>
             <summary>Install local models</summary>
             <p>Run from the project folder:</p>
-            <pre>.venv/bin/python scripts/setup_models.py all</pre>
+            <pre>.venv/bin/python scripts/setup_models.py mlx-image</pre>
+            <pre>uv sync --extra dev --extra local --extra speech</pre>
+            <pre>.venv/bin/python scripts/setup_models.py speech</pre>
+            <p>Additional local language model:</p>
+            <pre>ollama pull qwen3:8b</pre>
             <p>Optional fast reference studies:</p>
             <pre>.venv/bin/python scripts/setup_models.py fast-image</pre>
             <p className="caption">

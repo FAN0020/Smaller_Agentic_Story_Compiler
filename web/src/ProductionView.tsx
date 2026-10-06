@@ -49,13 +49,19 @@ export default function ProductionView({
     );
   const allApproved =
     allPlans && selected.every((n) => p.plans[String(n)].approved_hash);
+  const allRendered =
+    selected.length > 0 &&
+    selected.every((n) => p.productions[String(n)]?.file);
+  const allSoundtracks =
+    selected.length > 0 &&
+    selected.every((n) => p.productions[String(n)]?.soundtrack?.file);
   const findings = selected.flatMap(
     (n) => p.plans[String(n)]?.critique?.findings || [],
   );
   const blocking = findings.some((f: Data) => f.severity === "error");
   return (
     <>
-      <Header eyebrow="THE PRODUCTION STUDIO" title="Make the world tangible.">
+      <Header title="Make the world tangible.">
         Approve the look. Refine the direction. Bring each episode to the
         screen.
       </Header>
@@ -211,6 +217,23 @@ export default function ProductionView({
                 </Button>
               </div>
             )}
+            {allPlans && (
+              <Button
+                secondary
+                small
+                disabled={
+                  busy ||
+                  selected.some(
+                    (n) =>
+                      Object.keys(p.productions[String(n)]?.clips || {})
+                        .length > 0,
+                  )
+                }
+                onClick={() => void job("audio", { numbers: selected })}
+              >
+                Write narration & dialogue
+              </Button>
+            )}
             {selected.map((n) => {
               const plan = p.plans[String(n)];
               if (!plan) return null;
@@ -276,6 +299,22 @@ export default function ProductionView({
                                 {s.camera.lens && `· ${s.camera.lens}`} ·{" "}
                                 {s.camera.motivation}
                               </p>
+                              {(s.speech || []).map((cue: Data, j: number) => (
+                                <p className="narration" key={j}>
+                                  <strong>
+                                    {cue.kind === "narration"
+                                      ? "Narrator"
+                                      : p.bible.characters.find(
+                                          (c: Data) => c.id === cue.speaker,
+                                        )?.name || cue.speaker}
+                                    :
+                                  </strong>{" "}
+                                  “{cue.text}”{" "}
+                                  <span className="caption">
+                                    Through {cue.end_shot_id}
+                                  </span>
+                                </p>
+                              ))}
                               {s.narration && (
                                 <p className="narration">“{s.narration}”</p>
                               )}
@@ -381,14 +420,55 @@ export default function ProductionView({
               </div>
             )}
           </section>
+          {allApproved && settings.voice_provider !== "none" && (
+            <section className="section">
+              <h2>Hear it before you animate</h2>
+              <p className="muted">
+                Check the narrator, character voices and natural pauses.
+                Recordings are reused when you produce the episode.
+              </p>
+              {!allSoundtracks && (
+                <Button
+                  secondary
+                  disabled={busy}
+                  onClick={() => void job("speech", { numbers: selected })}
+                >
+                  Preview soundtrack
+                </Button>
+              )}
+
+              {selected.map((n) =>
+                p.productions[String(n)]?.soundtrack?.file ? (
+                  <div key={n}>
+                    <p>Episode {n} · narration & dialogue</p>
+                    <audio
+                      controls
+                      preload="metadata"
+                      src={artifact(
+                        p.id,
+                        p.productions[String(n)].soundtrack.file,
+                      )}
+                      aria-label={`Episode ${n} soundtrack`}
+                    />
+                  </div>
+                ) : null,
+              )}
+            </section>
+          )}
           <section className="render-section">
             <div>
               <p className="eyebrow">03 · ACTION</p>
-              <h2>Let the story move.</h2>
+              <h2>
+                {allRendered
+                  ? "Your episode is ready to watch."
+                  : "Let the story move."}
+              </h2>
               <p>
-                {settings.video_provider === "animatic"
-                  ? "Create an editorial preview from illustrated frames and narration."
-                  : "Generate individually directed clips, then assemble complete episodes."}
+                {allRendered
+                  ? "Review the assembled picture, narration and character voices."
+                  : settings.video_provider === "animatic"
+                    ? "Create an editorial preview from illustrated frames and narration."
+                    : "Generate individually directed clips, then assemble complete episodes."}
               </p>
               <span className="muted">
                 {selected.length} episode{selected.length !== 1 ? "s" : ""} ·{" "}
@@ -398,9 +478,14 @@ export default function ProductionView({
             </div>
             <Button
               disabled={busy || !allApproved || !p.references_hash}
-              onClick={() => void job("render", { numbers: selected })}
+              onClick={() =>
+                allRendered
+                  ? navigate("Watch")
+                  : void job("render", { numbers: selected })
+              }
             >
-              Produce {selected.length === 1 ? "episode" : "episodes"}{" "}
+              {allRendered ? "Watch" : "Produce"}{" "}
+              {selected.length === 1 ? "episode" : "episodes"}{" "}
               <ArrowRight size={17} />
             </Button>
           </section>
@@ -424,14 +509,15 @@ export default function ProductionView({
                 </Button>
               </div>
             ))}
-          {Object.values(p.productions).some((v: any) => v.file) && (
-            <div className="action-row">
-              <span>Rendered episodes are ready for viewing review.</span>
-              <Button secondary onClick={() => navigate("Watch")}>
-                Go to your screening room <ArrowRight size={16} />
-              </Button>
-            </div>
-          )}
+          {!allRendered &&
+            Object.values(p.productions).some((v: any) => v.file) && (
+              <div className="action-row">
+                <span>Rendered episodes are ready for viewing review.</span>
+                <Button secondary onClick={() => navigate("Watch")}>
+                  Go to your screening room <ArrowRight size={16} />
+                </Button>
+              </div>
+            )}
         </>
       )}
     </>

@@ -2379,3 +2379,10 @@ blockquote {
     max-width: 100%;
   }
 }
+
+/* Full-episode voice previews fit narrow production layouts. */
+.section audio {
+  width: min(100%, 680px);
+  display: block;
+  margin-top: 12px;
+}

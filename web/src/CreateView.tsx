@@ -64,10 +64,7 @@ export default function CreateView({
   const chosen = catalog.styles?.find((s: Data) => s.id === style);
   return (
     <>
-      <Header
-        eyebrow="YOUR DIRECTOR'S DESK"
-        title="A little story. A whole world."
-      >
+      <Header title="A little story. A whole world.">
         Turn the stories you love into beautifully directed short episodes.
       </Header>
       <div className="create-grid">

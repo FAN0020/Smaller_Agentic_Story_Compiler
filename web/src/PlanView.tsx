@@ -40,7 +40,6 @@ export default function PlanView({
   return (
     <>
       <Header
-        eyebrow="THE DIRECTOR PLAN"
         title={b?.title || p.title}
         action={
           <a

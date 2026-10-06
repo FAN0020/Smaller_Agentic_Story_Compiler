@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Aperture,
-  ArrowUpRight,
+  Plus,
   BookOpen,
   Check,
   Clapperboard,
@@ -9,7 +9,6 @@ import {
   FlaskConical,
   FolderOpen,
   LoaderCircle,
-  Plus,
   Settings2,
   X,
 } from "lucide-react";
@@ -161,7 +160,7 @@ export default function App() {
   }
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      <aside className="sidebar" aria-label="Studio navigation">
         <a
           href="#"
           className="brand"
@@ -178,9 +177,6 @@ export default function App() {
             <small>YOUR STORY. IN MOTION.</small>
           </span>
         </a>
-        <div className="workspace-label">
-          WORKSPACE <span>LOCAL</span>
-        </div>
         <nav aria-label="Main navigation">
           {pages.map((p) => (
             <button
@@ -191,20 +187,11 @@ export default function App() {
             >
               <p.icon size={18} />
               <span>{p.name}</span>
-              {p.name === "Create" && <span className="nav-plus">+</span>}
             </button>
           ))}
         </nav>
         <div className="sidebar-projects">
-          <div className="sidebar-label">
-            YOUR STORIES{" "}
-            <button
-              aria-label="Create a new story"
-              onClick={() => setPage("Create")}
-            >
-              <Plus size={15} />
-            </button>
-          </div>
+          <div className="sidebar-label">YOUR STORIES</div>
           {projects.length ? (
             projects.map((p) => (
               <button
@@ -225,9 +212,6 @@ export default function App() {
           )}
         </div>
         <div className="sidebar-bottom">
-          <button className="nav-item" onClick={() => setModelDialog(true)}>
-            <Settings2 size={17} /> Models & settings
-          </button>
           <div className="connection">
             <span className={`status-dot ${connected ? "" : "offline"}`} />
             <div>
@@ -240,7 +224,6 @@ export default function App() {
                   : "Check the studio server"}
               </span>
             </div>
-            <ArrowUpRight size={14} />
           </div>
         </div>
       </aside>
@@ -252,18 +235,14 @@ export default function App() {
             <strong>{page}</strong>
           </div>
           <div className="topbar-right">
-            <span className="quiet-tag">PRIVATE BY DESIGN</span>
             <button
               className="settings-shortcut"
               onClick={() => setModelDialog(true)}
             >
               <span className="status-dot" />
-              {settings.llm_provider === "ollama"
-                ? "Local models"
-                : "API models"}
+              Models & settings
               <Settings2 size={14} />
             </button>
-            <span className="avatar">S</span>
           </div>
         </header>
         <main>
@@ -365,16 +344,13 @@ export default function App() {
               <EvaluateView project={project} navigate={setPage} />
             )}
           </div>
-          <footer className="app-footer">
-            <Aperture size={14} />
-            <span>Small episodes. Lasting stories.</span>
-            <span>STORY COMPILER STUDIO · 0.1</span>
-          </footer>
         </main>
       </div>
       {modelDialog && (
         <ModelSettings
           initial={settings}
+          characters={project?.bible?.characters || []}
+          projectId={project?.id || ""}
           onClose={() => setModelDialog(false)}
           onSaved={setSettings}
         />

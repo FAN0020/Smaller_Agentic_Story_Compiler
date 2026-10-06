@@ -46,7 +46,7 @@ export function WatchView({
   ] as string[];
   return (
     <>
-      <Header eyebrow="YOUR SCREENING ROOM" title={p.bible?.title || p.title}>
+      <Header title={p.bible?.title || p.title}>
         {episodes.length} episode{episodes.length !== 1 ? "s" : ""} ready to
         watch.
       </Header>
@@ -121,7 +121,7 @@ export function WatchView({
             )}
           </div>
         </div>
-        <aside className="episode-library">
+        <aside className="episode-library" aria-label="Episode library">
           <p className="eyebrow">EPISODE LIBRARY</p>
           {chapters.length > 1 && (
             <label className="field">
@@ -183,10 +183,7 @@ export function EvaluateView({
   const produced = Object.values(p.productions) as Data[];
   return (
     <>
-      <Header
-        eyebrow="QUALITY & EVIDENCE"
-        title="A good story deserves a closer look."
-      >
+      <Header title="A good story deserves a closer look.">
         Planning quality and rendered quality are reviewed separately.
       </Header>
       <div className="evaluation-grid">

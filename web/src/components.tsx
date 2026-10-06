@@ -74,12 +74,10 @@ export function Busy({ text }: { text: string }) {
   );
 }
 export function Header({
-  eyebrow,
   title,
   children,
   action,
 }: {
-  eyebrow: string;
   title: string;
   children?: ReactNode;
   action?: ReactNode;
@@ -87,7 +85,6 @@ export function Header({
   return (
     <div className="page-header">
       <div>
-        <p className="eyebrow">{eyebrow}</p>
         <h1>{title}</h1>
         {children && <p className="subtitle">{children}</p>}
       </div>
