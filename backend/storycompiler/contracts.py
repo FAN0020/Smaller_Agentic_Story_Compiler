@@ -1,12 +1,15 @@
 """Structured outputs shared by planners, critics, UI and generation adapters."""
+
 from typing import Literal
+
 from pydantic import Field
+
 from .domain import Contract
 
 
 class ExtractedEvent(Contract):
     summary: str
-    quote: str = Field(description='Exact short substring copied from the source, not a paraphrase')
+    quote: str = Field(description="Exact short substring copied from the source, not a paraphrase")
     characters: list[str]
     location: str
 
@@ -25,7 +28,9 @@ class Character(Contract):
     costume: str
     acting: str
     voice: str
-    design_choices: str = Field(description='Appearance not specified by the source is labeled adaptation design')
+    design_choices: str = Field(
+        description="Appearance not specified by the source is labeled adaptation design"
+    )
 
 
 class Location(Contract):
@@ -54,7 +59,7 @@ class BibleDraft(Contract):
 class EmotionBeat(Contract):
     seconds: float = Field(ge=0)
     emotion: str
-    intensity: int = Field(ge=0,le=10)
+    intensity: int = Field(ge=0, le=10)
     cause: str
 
 
@@ -102,10 +107,10 @@ class ScenePlan(Contract):
     lighting: str
     environment: str
     sound_intent: str
-    duration: int = Field(ge=4,le=240)
-    start_state: dict[str,str]
-    end_state: dict[str,str]
-    transition_reason: str = ''
+    duration: int = Field(ge=4, le=240)
+    start_state: dict[str, str]
+    end_state: dict[str, str]
+    transition_reason: str = ""
 
 
 class SceneBatch(Contract):
@@ -113,28 +118,28 @@ class SceneBatch(Contract):
 
 
 class Camera(Contract):
-    size: Literal['ELS','LS','FULL','MLS','MS','MCU','CU','ECU','INSERT']
+    size: Literal["ELS", "LS", "FULL", "MLS", "MS", "MCU", "CU", "ECU", "INSERT"]
     angle: str
     movement: str
     motivation: str
-    lens: str = ''
-    focus: str = ''
-    composition: str = ''
+    lens: str = ""
+    focus: str = ""
+    composition: str = ""
 
 
 class Performance(Contract):
     character_id: str
     intent: str
     behavior: str
-    gaze: str = ''
-    intensity: int = Field(default=4,ge=0,le=10)
+    gaze: str = ""
+    intensity: int = Field(default=4, ge=0, le=10)
 
 
 class Sound(Contract):
-    ambience: str = ''
-    foley: str = ''
-    music: str = ''
-    dialogue: str = ''
+    ambience: str = ""
+    foley: str = ""
+    music: str = ""
+    dialogue: str = ""
     silence: bool = False
 
 
@@ -143,30 +148,50 @@ class ShotPlan(Contract):
     scene_id: str
     bible_hash: str
     source_event_ids: list[str]
-    purpose: Literal['ESTABLISHING','GEOGRAPHY','CHARACTER_INTRODUCTION','CHARACTER_ENTRANCE',
-                     'MASTER','ACTION','DIALOGUE','REACTION','POV','INSERT','DETAIL','REVEAL',
-                     'EMOTIONAL_EMPHASIS','TRANSITION','MONTAGE','ATMOSPHERE','SYMBOLIC',
-                     'FORESHADOWING','PAYOFF','EXIT','AFTERMATH','OTHER']
+    purpose: Literal[
+        "ESTABLISHING",
+        "GEOGRAPHY",
+        "CHARACTER_INTRODUCTION",
+        "CHARACTER_ENTRANCE",
+        "MASTER",
+        "ACTION",
+        "DIALOGUE",
+        "REACTION",
+        "POV",
+        "INSERT",
+        "DETAIL",
+        "REVEAL",
+        "EMOTIONAL_EMPHASIS",
+        "TRANSITION",
+        "MONTAGE",
+        "ATMOSPHERE",
+        "SYMBOLIC",
+        "FORESHADOWING",
+        "PAYOFF",
+        "EXIT",
+        "AFTERMATH",
+        "OTHER",
+    ]
     narrative_focus: str
     visual_focus: str
     characters: list[str]
     location_id: str
     action: str
-    duration: int = Field(ge=1,le=240)
+    duration: int = Field(ge=1, le=240)
     camera: Camera
     performance: list[Performance]
     blocking: str
-    start_state: dict[str,str]
-    end_state: dict[str,str]
+    start_state: dict[str, str]
+    end_state: dict[str, str]
     state_reason: str
-    transition_reason: str = ''
+    transition_reason: str = ""
     locked: list[str]
     allowed_changes: list[str]
     sound: Sound
-    narration: str = ''
+    narration: str = ""
     edit: str
-    information_change: str = ''
-    hidden_information: str = ''
+    information_change: str = ""
+    hidden_information: str = ""
 
 
 class ShotBatch(Contract):
@@ -174,9 +199,9 @@ class ShotBatch(Contract):
 
 
 class CriticFinding(Contract):
-    severity: Literal['error','warning']
+    severity: Literal["error", "warning"]
     artifact_id: str
-    category: Literal['fidelity','continuity','direction','children','pacing','sound']
+    category: Literal["fidelity", "continuity", "direction", "children", "pacing", "sound"]
     finding: str
     repair: str
 
@@ -185,4 +210,3 @@ class CriticReport(Contract):
     findings: list[CriticFinding]
     strengths: list[str]
     summary: str
-
