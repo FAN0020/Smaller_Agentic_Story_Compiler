@@ -1,0 +1,144 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "01_lion_mouse",
+      "split": "regression",
+      "category": "regression",
+      "fixture": "docs/stories/01_lion_mouse.txt",
+      "sha256": "91d400851bf13ae4529ae57b4503b61ad0b89725b15a39f76d6c009589075c80",
+      "expected_properties": [
+        "Lion sleeps; mouse wakes him.",
+        "Lion releases the mouse before becoming trapped.",
+        "Mouse gnaws the net and frees the lion.",
+        "One coherent 60-second episode is the default."
+      ],
+      "forbidden_behavior": [
+        "Mouse sleeping instead of lion",
+        "Release or rescue happens before its cause",
+        "Truncating the rescue to satisfy one episode"
+      ],
+      "deterministic_gates": [
+        "exact source passage evidence",
+        "ordered complete episode coverage",
+        "60\u2013240-second timeline",
+        "frozen bible and reference lineage",
+        "contiguous state handoff"
+      ],
+      "semantic_rubric": [
+        "Source fidelity: 0 contradiction, 1 minor disclosed adaptation, 2 faithful",
+        "Direction: meaningful actions, motivated framing, readable cause/effect",
+        "Rendered quality: identity, anatomy, motion, style, legibility; requires actual media inspection"
+      ],
+      "provenance": "User-provided sample stories",
+      "metadata": {
+        "target_seconds": 60,
+        "style": "watercolor"
+      },
+      "rationale": "Regression case and protected samples exercise short tales, mystery, children adaptations and a novel."
+    },
+    {
+      "id": "02_hare_tortoise",
+      "split": "test",
+      "category": "positive",
+      "fixture": "docs/stories/02_hare_tortoise.txt",
+      "sha256": "7dfcf7f8581ee9e92b52f1d0cd9ea2dae2bda87a3506f75cf01ca20f744e2c3a",
+      "expected_properties": [
+        "Boasting and challenge precede the race.",
+        "The hare sleeps; the tortoise continues steadily.",
+        "The tortoise wins."
+      ],
+      "forbidden_behavior": [
+        "Hare wins",
+        "Tortoise cheats",
+        "Invented revenge"
+      ],
+      "deterministic_gates": [
+        "exact source passage evidence",
+        "ordered complete episode coverage",
+        "60\u2013240-second timeline",
+        "frozen bible and reference lineage",
+        "contiguous state handoff"
+      ],
+      "semantic_rubric": [
+        "Source fidelity: 0 contradiction, 1 minor disclosed adaptation, 2 faithful",
+        "Direction: meaningful actions, motivated framing, readable cause/effect",
+        "Rendered quality: identity, anatomy, motion, style, legibility; requires actual media inspection"
+      ],
+      "provenance": "User-provided sample stories",
+      "metadata": {
+        "target_seconds": 60,
+        "style": "watercolor"
+      },
+      "rationale": "Regression case and protected samples exercise short tales, mystery, children adaptations and a novel."
+    },
+    {
+      "id": "05_speckled_band",
+      "split": "test",
+      "category": "edge",
+      "fixture": "docs/stories/05_speckled_band.txt",
+      "sha256": "0505115570252945c072694d010a12f029fd28e20bd845539238e837dc59370e",
+      "expected_properties": [
+        "Preserve mystery and reveal chronology.",
+        "Separate audience knowledge from character knowledge.",
+        "Children mode discloses adaptations to threatening material."
+      ],
+      "forbidden_behavior": [
+        "Reveal the solution in an early visible shot",
+        "Invent motives or relationships"
+      ],
+      "deterministic_gates": [
+        "exact source passage evidence",
+        "ordered complete episode coverage",
+        "60\u2013240-second timeline",
+        "frozen bible and reference lineage",
+        "contiguous state handoff"
+      ],
+      "semantic_rubric": [
+        "Source fidelity: 0 contradiction, 1 minor disclosed adaptation, 2 faithful",
+        "Direction: meaningful actions, motivated framing, readable cause/effect",
+        "Rendered quality: identity, anatomy, motion, style, legibility; requires actual media inspection"
+      ],
+      "provenance": "User-provided sample stories",
+      "metadata": {
+        "target_seconds": 60,
+        "style": "watercolor"
+      },
+      "rationale": "Regression case and protected samples exercise short tales, mystery, children adaptations and a novel."
+    },
+    {
+      "id": "Pride and Prejudice by Jane Austen",
+      "split": "test",
+      "category": "edge",
+      "fixture": "docs/stories/Pride and Prejudice by Jane Austen.txt",
+      "sha256": "9cf8491f37a1bf4e6eba3b9f371deaad1980fdc122c29e093190ee0096ca6f02",
+      "expected_properties": [
+        "Read every source chunk without truncation.",
+        "Preserve recurring identities across chunk groups.",
+        "Every extracted event belongs to exactly one episode."
+      ],
+      "forbidden_behavior": [
+        "Dropping final source sections",
+        "Independent bibles per episode"
+      ],
+      "deterministic_gates": [
+        "exact source passage evidence",
+        "ordered complete episode coverage",
+        "60\u2013240-second timeline",
+        "frozen bible and reference lineage",
+        "contiguous state handoff"
+      ],
+      "semantic_rubric": [
+        "Source fidelity: 0 contradiction, 1 minor disclosed adaptation, 2 faithful",
+        "Direction: meaningful actions, motivated framing, readable cause/effect",
+        "Rendered quality: identity, anatomy, motion, style, legibility; requires actual media inspection"
+      ],
+      "provenance": "User-provided sample stories",
+      "metadata": {
+        "target_seconds": 60,
+        "style": "watercolor"
+      },
+      "rationale": "Regression case and protected samples exercise short tales, mystery, children adaptations and a novel."
+    }
+  ]
+}
