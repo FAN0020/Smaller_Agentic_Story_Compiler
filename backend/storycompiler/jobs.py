@@ -6,6 +6,7 @@ from .generation import Cancelled
 from .planning import Planner, ReviewRequired
 from .production import Producer
 from .providers import JsonLLM
+from .settings import JobSettings
 
 
 class JobWorker:
@@ -47,9 +48,12 @@ class JobWorker:
             def record(entry):
                 p["audit"].append(entry)
 
-            llm = JsonLLM(self.settings, record=record)
+            frozen_settings = JobSettings(
+                self.settings, job["payload"].get("model_settings", self.settings.get().model_dump())
+            )
+            llm = JsonLLM(frozen_settings, record=record)
             planner = Planner(self.repo, llm, progress)
-            producer = Producer(self.repo, self.settings, progress, cancelled)
+            producer = Producer(self.repo, frozen_settings, progress, cancelled)
             options = job["payload"]
             kind = job["kind"]
             if kind == "analyze":

@@ -9,7 +9,12 @@ from .domain import Contract
 
 class ExtractedEvent(Contract):
     summary: str
-    quote: str = Field(description="Exact short substring copied from the source, not a paraphrase")
+    source_span_id: str = Field(
+        default="", description="ID of the supplied original source passage supporting this event"
+    )
+    quote: str = Field(
+        default="", description="Leave empty when using source_span_id; code copies original text"
+    )
     characters: list[str]
     location: str
 

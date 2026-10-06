@@ -93,3 +93,17 @@ class SettingsStore:
         with os.fdopen(fd, "wb") as f:
             f.write(data)
         path.replace(self.root / name)
+
+
+class JobSettings:
+    """Immutable per-job model selection with credentials resolved only at the provider boundary."""
+
+    def __init__(self, store, snapshot):
+        self.store = store
+        self.snapshot = ModelSettings.model_validate(snapshot)
+
+    def get(self):
+        return self.snapshot.model_copy(deep=True)
+
+    def secret(self, provider):
+        return self.store.secret(provider)

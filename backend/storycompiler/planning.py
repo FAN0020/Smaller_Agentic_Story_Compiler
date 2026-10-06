@@ -15,6 +15,11 @@ def shot_context(context, scene):
     }
 
 
+def source_excerpts(p, events):
+    ids = {e["source_id"] for e in events}
+    return [c.model_dump() for c in chunk_source(p["source"]) if c.id in ids]
+
+
 class ReviewRequired(ValueError):
     pass
 
@@ -27,6 +32,14 @@ class Planner:
         self.repo.save_project(p)
         self.progress(progress, message)
 
+    def semantic_gate(self, context, layer, candidate):
+        report = self.llm.generate(
+            "narrative-critic", {**context, "layer": layer, "candidate": candidate}, CriticReport
+        )
+        return report.model_dump(), [
+            f.finding + " Correction: " + f.repair for f in report.findings if f.severity == "error"
+        ]
+
     def analyze(self, p):
         if p["bible_hash"]:
             raise ValueError("Frozen analysis cannot be overwritten; create a revision")
@@ -36,14 +49,34 @@ class Planner:
                 continue
             self.progress(i / len(chunks) * 0.7, f"Reading story section {i + 1} of {len(chunks)}…")
             errors = []
+            passages = []
+            for match in re.finditer(r"\S[^\n]*(?:\n(?!\n)[^\n]*)*", chunk.text):
+                for part in chunk_source(match.group(0), limit=800):
+                    passages.append(
+                        {
+                            "id": f"{chunk.id}-p{len(passages) + 1}",
+                            "text": part.text,
+                            "start": match.start() + part.start,
+                            "end": match.start() + part.end,
+                        }
+                    )
+            by_id = {s["id"]: s for s in passages}
             for attempt in range(3):
                 analysis = self.llm.generate(
                     "source-analysis",
-                    {"source": chunk.model_dump(), "repair_feedback": errors},
+                    {"source_id": chunk.id, "passages": passages, "repair_feedback": errors},
                     ChunkAnalysis,
                 )
                 errors = []
                 for event in analysis.events:
+                    if event.source_span_id:
+                        if event.source_span_id in by_id:
+                            event.quote = by_id[event.source_span_id]["text"]
+                        else:
+                            errors.append(
+                                f"Unknown source_span_id {event.source_span_id}; use a supplied passage ID"
+                            )
+                        continue
                     pattern = r"\s+".join(re.escape(word) for word in event.quote.split())
                     match = re.search(pattern, chunk.text) if pattern else None
                     if match is None:
@@ -52,6 +85,15 @@ class Planner:
                         )
                     else:
                         event.quote = match.group(0)
+                p.setdefault("analysis_attempts", []).append(
+                    {
+                        "source_id": chunk.id,
+                        "attempt": attempt + 1,
+                        "errors": errors,
+                        "candidate": analysis.model_dump(),
+                    }
+                )
+                self.repo.save_project(p)
                 if not errors:
                     break
             if errors:
@@ -140,6 +182,10 @@ class Planner:
                 "next_number": len(p["episodes"]) + 1,
                 "previous_episode": p["episodes"][-1:] or [],
                 "is_final_batch": start + 24 >= len(remaining),
+                "original_source_excerpts": source_excerpts(p, group),
+                "suggested_episode_count": max(
+                    1, round(sum(e["source_characters"] for e in group) / (brief.target_seconds * 15))
+                ),
             }
             errors = []
             for attempt in range(3):
@@ -172,6 +218,9 @@ class Planner:
                     ):
                         errors.append("Open loops must reference actual source events")
                 if not errors:
+                    review, errors = self.semantic_gate(context, "episode boundaries", eps)
+                    p["audit"].append({"action": "episode_semantic_review", "review": review})
+                if not errors:
                     break
             if errors:
                 raise ReviewRequired("; ".join(errors))
@@ -201,6 +250,7 @@ class Planner:
                 "bible_hash": p["bible_hash"],
                 "source_events": events,
                 "target_seconds": brief.target_seconds,
+                "original_source_excerpts": source_excerpts(p, events),
             }
             plan = p["plans"].get(key, {"scenes": [], "shots": [], "status": "planning", "attempts": []})
             scene_errors = (
@@ -235,6 +285,11 @@ class Planner:
                         {l["id"] for l in bible["locations"]},
                     )
                     if not errors:
+                        review, errors = self.semantic_gate(
+                            context, "scene intent and continuity", scenes.model_dump()
+                        )
+                        plan.setdefault("scene_reviews", []).append(review)
+                    if not errors:
                         break
                 if errors:
                     raise ReviewRequired("; ".join(errors))
@@ -244,6 +299,17 @@ class Planner:
                 ]
                 p["plans"][key] = plan
                 self.checkpoint(p, f"Episode {number}: scenes saved")
+            elif not plan.get("scene_reviews"):
+                review, errors = self.semantic_gate(context, "scene intent and continuity", plan["scenes"])
+                plan["scene_reviews"] = [review]
+                if errors:
+                    plan.setdefault("superseded_scenes", []).append(
+                        {"scenes": plan["scenes"], "errors": errors}
+                    )
+                    plan["scenes"] = []
+                    plan["shots"] = []
+                    self.checkpoint(p, "Scene fidelity requires repair; resume to re-direct")
+                    raise ReviewRequired("; ".join(errors))
             for scene_index, scene in enumerate(plan["scenes"]):
                 if any(s["scene_id"] == scene["id"] for s in plan["shots"]):
                     continue

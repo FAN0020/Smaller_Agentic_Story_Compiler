@@ -70,6 +70,73 @@ class AnalysisModel:
         raise AssertionError(stage)
 
 
+def test_semantic_scene_error_stops_before_shot_generation(tmp_path):
+    Planner, Repo = modules()
+    from storycompiler.planning import ReviewRequired
+
+    class Model(AnalysisModel):
+        def generate(self, stage, context, schema):
+            if stage == "scene-director":
+                return schema.model_validate(
+                    {
+                        "scenes": [
+                            {
+                                "id": "ep1-sc1",
+                                "episode_number": 1,
+                                "bible_hash": context["bible_hash"],
+                                "title": "Wrong sleeping animal",
+                                "purpose": "Wake",
+                                "objective": "Escape",
+                                "conflict": "Capture",
+                                "source_event_ids": ["src-0001-ev1"],
+                                "characters": ["c1"],
+                                "location_id": "l1",
+                                "emotional_progression": "Fear to relief",
+                                "information_plan": "Reveal capture",
+                                "geography": "tree left",
+                                "lighting": "daylight",
+                                "environment": "forest",
+                                "sound_intent": "wind",
+                                "duration": 60,
+                                "start_state": {"mouse": "sleeping"},
+                                "end_state": {"mouse": "free"},
+                                "transition_reason": "",
+                            }
+                        ]
+                    }
+                )
+            if stage == "narrative-critic":
+                return schema.model_validate(
+                    {
+                        "findings": [
+                            {
+                                "severity": "error",
+                                "artifact_id": "ep1-sc1",
+                                "category": "fidelity",
+                                "finding": "The mouse is not sleeping in the source.",
+                                "repair": "Restore the lion as the sleeping animal.",
+                            }
+                        ],
+                        "strengths": [],
+                        "summary": "Source contradiction",
+                    }
+                )
+            return super().generate(stage, context, schema)
+
+    repo = Repo(tmp_path)
+    p = repo.create_project(
+        "Test", "The mouse frees the lion.", CreativeBrief(target_seconds=60).model_dump()
+    )
+    planner = Planner(repo, Model(), lambda *_: None)
+    planner.analyze(p)
+    planner.freeze(p)
+    p["episodes"] = [{"number": 1, "source_event_ids": ["src-0001-ev1"], "target_seconds": 60}]
+    repo.save_project(p)
+    with pytest.raises(ReviewRequired, match="sleeping"):
+        planner.direct(p, [1])
+    assert not p["plans"].get("1", {}).get("shots")
+
+
 def test_source_analysis_checkpoints_and_freezes_before_episode_division(tmp_path):
     Planner, Repo = modules()
     repo = Repo(tmp_path)
@@ -104,6 +171,36 @@ def test_evidence_quotes_match_wrapped_source_without_inventing_words(tmp_path):
     Planner(repo, AnalysisModel(), lambda *_: None).analyze(p)
     event = p["events"][0]
     assert p["source"][event["source_start"] : event["source_end"]] == "The mouse frees\nthe lion."
+
+
+def test_source_passage_ids_ground_quotes_without_relying_on_model_transcription(tmp_path):
+    Planner, Repo = modules()
+
+    class PassageModel(AnalysisModel):
+        def generate(self, stage, context, schema):
+            if stage == "source-analysis":
+                assert "passages" in context, "Source passages need stable IDs"
+                return schema.model_validate(
+                    {
+                        "summary": "Kindness",
+                        "events": [
+                            {
+                                "summary": "Mouse frees lion",
+                                "source_span_id": context["passages"][0]["id"],
+                                "quote": "",
+                                "characters": ["Mouse", "Lion"],
+                                "location": "Forest",
+                            }
+                        ],
+                        "content_notes": [],
+                    }
+                )
+            return super().generate(stage, context, schema)
+
+    repo = Repo(tmp_path)
+    p = repo.create_project("Test", "The mouse frees the lion.", CreativeBrief().model_dump())
+    Planner(repo, PassageModel(), lambda *_: None).analyze(p)
+    assert p["events"][0]["quote"] == "The mouse frees the lion."
 
 
 def test_http_llm_uses_structured_contract_and_reports_provider_errors(tmp_path):

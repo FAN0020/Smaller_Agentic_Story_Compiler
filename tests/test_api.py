@@ -64,3 +64,23 @@ def test_settings_secrets_not_exported_and_empty_story_rejected(tmp_path):
         r = c.put("/api/settings", json={"credential_provider": "openai", "api_key": "private-key"})
         assert r.status_code == 200 and "private-key" not in r.text
         assert "private-key" not in c.get("/api/settings").text
+
+
+def test_queued_jobs_freeze_model_choices_without_storing_credentials(tmp_path):
+    with client(tmp_path) as c:
+        p = c.post(
+            "/api/projects", json={"title": "Test", "source": "A lion befriends a mouse.", "brief": {}}
+        ).json()
+        job = c.post("/api/projects/" + p["id"] + "/jobs", json={"kind": "analyze"}).json()
+        assert job["payload"].get("model_settings", {}).get("llm_provider") == "ollama"
+        c.put(
+            "/api/settings",
+            json={
+                "llm_model": "another-local-model",
+                "credential_provider": "openai",
+                "api_key": "secret-for-test",
+            },
+        )
+        stored = c.get("/api/projects/" + p["id"]).json()["jobs"][0]
+        assert stored["payload"]["model_settings"]["llm_model"] != "another-local-model"
+        assert "secret-for-test" not in str(stored)

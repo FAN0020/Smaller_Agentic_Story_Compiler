@@ -217,7 +217,8 @@ def create_app(root: Path | None = None, start_worker=True):
                 assert_production_approved(p, body.numbers)
             if body.kind == "analyze" and p["bible_hash"]:
                 raise ValueError("Create a revision to reanalyze a frozen story")
-            return repo.enqueue(id, body.kind, body.model_dump(exclude={"kind"}))
+            payload = {**body.model_dump(exclude={"kind"}), "model_settings": settings.get().model_dump()}
+            return repo.enqueue(id, body.kind, payload)
 
     @app.post("/api/projects/{id}/approve")
     def approve(id: str, body: Approval):
