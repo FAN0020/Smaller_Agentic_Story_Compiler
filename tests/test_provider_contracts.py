@@ -37,10 +37,11 @@ def test_image_generation_and_reference_edit_contract(tmp_path):
     reference = tmp_path / "reference.png"
     reference.write_bytes(png())
     api.image("A tree", tmp_path / "first.png")
-    api.image("Same tree", tmp_path / "second.png", references=[reference])
+    api.image("Same tree", tmp_path / "second.png", references=[reference], size="1536x1024")
     assert calls[0].url.path == "/v1/images/generations"
     assert calls[1].url.path == "/v1/images/edits"
     assert b'name="image[]"' in calls[1].content
+    assert b'name="size"\r\n\r\n1536x1024' in calls[1].content
     assert Image.open(tmp_path / "second.png").size == (16, 16)
     api.close()
 
@@ -130,9 +131,12 @@ def test_local_reference_generation_uses_native_multi_image_inputs(tmp_path, mon
     calls = []
     monkeypatch.setattr(generator, "_run", lambda *args, **kwargs: calls.append(kwargs))
     refs = [tmp_path / f"character-{n}.png" for n in range(6)]
-    generator.image("All six subjects in one scene", tmp_path / "frame.png", 42, references=refs)
+    generator.image(
+        "All six subjects in one scene", tmp_path / "frame.png", 42, references=refs, size=(512, 288)
+    )
     assert calls[0]["references"] == [str(ref) for ref in refs]
     assert calls[0]["model_id"] == "black-forest-labs/FLUX.2-klein-4B"
+    assert calls[0]["size"] == [512, 288]
     with pytest.raises(ValueError, match="multi-reference"):
         generator.image("Scene", tmp_path / "frame.png", 42, references=refs, model="stabilityai/sd-turbo")
 

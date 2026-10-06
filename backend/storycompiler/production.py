@@ -57,10 +57,12 @@ class Producer:
             self.remote = OpenAIGenerator(self.store, self.cancelled)
         return self.remote
 
-    def image(self, prompt, output, seed, references=None):
+    def image(self, prompt, output, seed, references=None, aspect=None):
         if self.settings.image_provider == "openai":
-            return self.hosted().image(prompt, output, self.settings.image_model, references)
-        return self.local.image(prompt, output, seed, references, self.settings.image_model)
+            size = {"16:9": "1536x1024", "9:16": "1024x1536"}.get(aspect, "1024x1024")
+            return self.hosted().image(prompt, output, self.settings.image_model, references, size=size)
+        size = {"16:9": (512, 288), "9:16": (288, 512)}.get(aspect, (512, 512))
+        return self.local.image(prompt, output, seed, references, self.settings.image_model, size=size)
 
     def references(self, p, only=None):
         Planner.assert_frozen(p)
@@ -208,7 +210,7 @@ class Producer:
                         f"Painting Episode {number}, frame {i + 1} of {len(plan['shots'])}…",
                     )
                     still_prompt = compile_frame(shot, p["bible"], scene)
-                    self.image(still_prompt, frame, receipt["seed"], refs)
+                    self.image(still_prompt, frame, receipt["seed"], refs, p["brief"]["aspect"])
                 raw = directory / f"{prefix}ep{number}-{i + 1:03}-raw.mp4"
                 if not raw.exists():
                     self.progress(

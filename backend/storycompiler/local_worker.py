@@ -26,11 +26,12 @@ def main():
         if len(pipe.tokenizer(request["prompt"], add_special_tokens=False)["input_ids"]) > 960:
             raise ValueError("FLUX prompt exceeds its text budget; simplify the shot explicitly")
         refs = [Image.open(path).convert("RGB") for path in request.get("references", [])]
+        width, height = request.get("size", [512, 512])
         result = pipe(
             image=refs or None,
             prompt=request["prompt"],
-            height=512,
-            width=512,
+            height=height,
+            width=width,
             num_inference_steps=4,
             guidance_scale=1.0,
             max_sequence_length=1024,

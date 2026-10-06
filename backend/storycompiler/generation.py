@@ -84,7 +84,15 @@ class LocalGenerator:
         partial.replace(output)
         return output
 
-    def image(self, prompt, output, seed, references=None, model="black-forest-labs/FLUX.2-klein-4B"):
+    def image(
+        self,
+        prompt,
+        output,
+        seed,
+        references=None,
+        model="black-forest-labs/FLUX.2-klein-4B",
+        size=(512, 512),
+    ):
         if model not in LOCAL_IMAGE_MODELS:
             raise ValueError("Choose an installed supported local image model")
         if references and model == "stabilityai/sd-turbo":
@@ -92,7 +100,13 @@ class LocalGenerator:
                 "SD-Turbo does not support multi-reference scene composition. Choose FLUX.2 Klein or an image API."
             )
         return self._run(
-            "image", prompt, output, seed, model_id=model, references=[str(p) for p in references or []]
+            "image",
+            prompt,
+            output,
+            seed,
+            model_id=model,
+            references=[str(p) for p in references or []],
+            size=list(size),
         )
 
     def video(self, prompt, reference, output, seed, steps, portrait=False):
@@ -131,20 +145,20 @@ class OpenAIGenerator:
             )
         return response
 
-    def image(self, prompt, output, model="gpt-image-1", references=None):
+    def image(self, prompt, output, model="gpt-image-1", references=None, size="1024x1024"):
         if references:
             files = [("image[]", (p.name, p.read_bytes(), "image/png")) for p in references]
             response = self.request(
                 "POST",
                 "/images/edits",
-                data={"model": model, "prompt": prompt, "size": "1024x1024"},
+                data={"model": model, "prompt": prompt, "size": size},
                 files=files,
             )
         else:
             response = self.request(
                 "POST",
                 "/images/generations",
-                json={"model": model, "prompt": prompt, "size": "1024x1024", "n": 1},
+                json={"model": model, "prompt": prompt, "size": size, "n": 1},
             )
         try:
             data = response.json()["data"][0]["b64_json"]
