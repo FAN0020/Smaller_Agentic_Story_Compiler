@@ -15,6 +15,7 @@ from .contracts import (
     ShotPlan,
 )
 from .domain import STYLE_BY_ID, CreativeBrief, chunk_source, fingerprint
+from .prompts import VERSION
 from .validation import (
     assert_references_frozen,
     validate_outline,
@@ -48,6 +49,7 @@ def shot_context(context, scene):
         )
     } | {
         "bible": bible,
+        "scene": scene,
         "source_events": events,
         "original_source_excerpts": [
             {"text": quote} for quote in dict.fromkeys(e.get("quote", "") for e in events)
@@ -457,8 +459,12 @@ class Planner:
                 existing = [s for s in plan["shots"] if s["scene_id"] == scene["id"]]
                 errors = []
                 reviews = plan.setdefault("shot_reviews", {})
+
+                def review_hash(candidate, scope=scoped):
+                    return fingerprint({"shots": candidate, "context": scope, "prompt_version": VERSION})
+
                 if existing:
-                    if reviews.get(scene["id"], {}).get("hash") == fingerprint(existing):
+                    if reviews.get(scene["id"], {}).get("hash") == review_hash(existing):
                         continue
                     self.progress(
                         (index + scene_index / len(plan["scenes"])) / len(numbers),
@@ -468,7 +474,7 @@ class Planner:
                         scoped, "shots within assigned scene events only", existing
                     )
                     if not errors:
-                        reviews[scene["id"]] = {"hash": fingerprint(existing), "review": review}
+                        reviews[scene["id"]] = {"hash": review_hash(existing), "review": review}
                         self.checkpoint(p, f"Episode {number}: scene {scene_index + 1} fidelity checked")
                         continue
                     plan.setdefault("superseded_shots", []).append(
@@ -534,7 +540,7 @@ class Planner:
                             scoped, "shots within assigned scene events only", [s.model_dump() for s in shots]
                         )
                         reviews[scene["id"]] = {
-                            "hash": fingerprint([s.model_dump() for s in shots]) if not errors else None,
+                            "hash": review_hash([s.model_dump() for s in shots]) if not errors else None,
                             "review": review,
                         }
                     plan["attempts"].append(
