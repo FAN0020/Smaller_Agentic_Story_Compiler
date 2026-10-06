@@ -18,9 +18,10 @@ Development run: October 6–7, 2026. Runtime: macOS, Apple M5 Pro, 24 GB RAM. S
 Real Chromium against the running backend, using the installed Playwright skill:
 
 - Desktop 1440×1000 and mobile 390×844 layouts inspected; mobile has no horizontal overflow.
-- Create, models dialog, Production, and Evaluate screens passed the executed axe WCAG 2 A/AA and 2.1 AA checks. This is not an accessibility certification.
+- Create, models dialog, Production, Evaluate, and desktop/mobile Watch screens passed the executed axe WCAG 2 A/AA and 2.1 AA checks. This is not an accessibility certification.
 - Actual text-file upload, sample selection, first-N/custom episode entry, project navigation, model selection, generated reference display, individual reference regeneration, reference approval, episode planning, plan revision, plan approval, new take, and video queueing exercised through the UI.
 - The plan editor displays malformed-JSON errors without discarding the draft. A valid reviewer correction was saved through the UI and recorded in the project audit.
+- The real episode played in Chromium, exposed all 15 caption cues, sought to 30 seconds, and downloaded successfully. The downloaded SHA-256 matches the artifact. Byte-range delivery and persistence across an application restart passed.
 - Source form remains mounted during navigation. Stale project responses cannot replace the newly selected project.
 - Local screenshots are under `output/playwright/` (excluded from Git).
 
@@ -44,9 +45,13 @@ Code owns source passage copying, event partitioning, lineage IDs, duration arit
 
 Five SD-Turbo references were generated through the public UI queue and inspected; the mouse was regenerated once. SD-Turbo then failed production composition by preserving a reference-sheet collage. That take was stopped and archived. The application now uses FLUX.2 Klein's native multiple-image inputs for local composition and prevents SD-Turbo from being used for this operation. A real FLUX frame produced a coherent watercolor scene consistent with the reference design.
 
-The FLUX/LTX take is **in progress** at this report checkpoint. Its first two completed clips are each four seconds with video and narration. Measured frame generation was about 50 seconds and motion generation 72–81 seconds per clip on this host. The render was cancelled and the application restarted; the two completed clips were reused with identical SHA-256 hashes and unchanged file timestamps. Full-episode playback and final artifact review remain pending until assembly finishes.
+The FLUX/LTX take **completed**: 15 separately generated clips assembled to **60.021333 seconds**, 1,440 H.264 video frames at 768×432, AAC audio at 48 kHz, and 15 WebVTT caption cues. Full-file FFmpeg decoding passed. All 15 clip checksums and frozen bible/reference lineage records were verified. The render was cancelled and the application restarted after two clips; both were reused with identical SHA-256 hashes and unchanged file timestamps. Early measured frame generation was about 50 seconds and motion generation 72–81 seconds per clip on this host; some later calls were slower.
 
-Mid-clip inspection already shows anatomy and scale drift in a mouse close-up, despite the improved opening frames. Visual approval remains unset. The local motion baseline is not accepted as professional-quality footage; the generated episode is an engineering evaluation artifact.
+Artifact: `.studio/artifacts/c363495d529a4644885716e754197863/take-ff6824c5-episode-1.mp4`. SHA-256: `160e0f78b591459190d0d4ed8fc54b733ed77bb1c33675922ac1b969ba15aebe`. The complete export is saved locally under `output/evaluation/final-project.json`. Large media and project data remain outside Git.
+
+This full episode is the baseline take using square opening images cropped for landscape motion. Inspection exposed that avoidable framing loss. The final implementation generates opening frames in the chosen aspect ratio. A separate real 512×288 reference-conditioned frame and a 4.041667-second LTX motion clip verified the corrected landscape path; a second full episode was not generated. SD-Turbo's superseded model download was removed to reclaim disk; its reference images and failed-take artifacts remain, and its optional installer is available.
+
+Mid-frame samples from all 15 shots show anatomy, identity and scale drift, especially in close-ups and the release action. Visual approval remains unset (`human_review_required`). The local motion baseline is **not accepted as professional-quality footage**; the generated episode is an engineering evaluation artifact. Technical completion and browser playback do not establish artistic or spoken-performance quality.
 
 ## Boundaries of the evidence
 
