@@ -18,6 +18,16 @@ class Cancelled(RuntimeError):
     pass
 
 
+def partial_path(output):
+    return output.with_name(output.stem + ".partial" + output.suffix)
+
+
+def publish_bytes(output, data):
+    partial = partial_path(output)
+    partial.write_bytes(data)
+    partial.replace(output)
+
+
 class LocalGenerator:
     def __init__(self, root: Path, cancelled):
         self.root = Path(root).resolve()
@@ -30,13 +40,14 @@ class LocalGenerator:
                 f"Local {kind} model is not installed. Run .venv/bin/python scripts/setup_models.py {kind}"
             )
         output = Path(output).resolve()
+        partial = partial_path(output)
         request = output.with_suffix(".request.json")
         request.write_text(
             json.dumps(
                 {
                     "kind": kind,
                     "prompt": prompt,
-                    "output": str(output),
+                    "output": str(partial),
                     "models": str(self.root / "models"),
                     "seed": seed,
                     **options,
@@ -65,10 +76,11 @@ class LocalGenerator:
                         raise Cancelled("Production cancelled; completed clips are saved")
                     raise ProviderError("Local generation exceeded 40 minutes; reduce model settings")
                 time.sleep(0.5)
-        if proc.returncode or not output.exists():
+        if proc.returncode or not partial.exists():
             # Local logs contain no credentials; preserve detailed diagnostics as an artifact.
             tail = log.read_text()[-800:]
             raise ProviderError("Local generation failed. " + tail)
+        partial.replace(output)
         return output
 
     def image(self, prompt, output, seed, reference=None):
@@ -127,8 +139,10 @@ class OpenAIGenerator:
             )
         try:
             data = response.json()["data"][0]["b64_json"]
-            output.write_bytes(base64.b64decode(data, validate=True))
-            Image.open(output).verify()
+            partial = partial_path(output)
+            partial.write_bytes(base64.b64decode(data, validate=True))
+            Image.open(partial).verify()
+            partial.replace(output)
         except (KeyError, ValueError) as e:
             raise ProviderError("Image provider returned an invalid image payload") from e
         return output
@@ -159,8 +173,8 @@ class OpenAIGenerator:
                 raise Cancelled("Stopped polling. Resume to retrieve the existing provider job.")
             data = self.request("GET", "/videos/" + receipt["provider_id"]).json()
             if data["status"] == "completed":
-                output.write_bytes(
-                    self.request("GET", "/videos/" + receipt["provider_id"] + "/content").content
+                publish_bytes(
+                    output, self.request("GET", "/videos/" + receipt["provider_id"] + "/content").content
                 )
                 return output
             if data["status"] == "failed":
@@ -176,7 +190,7 @@ class OpenAIGenerator:
             "/audio/speech",
             json={"model": "gpt-4o-mini-tts", "input": text, "voice": voice, "response_format": "wav"},
         )
-        output.write_bytes(response.content)
+        publish_bytes(output, response.content)
 
     def close(self):
         self.client.close()

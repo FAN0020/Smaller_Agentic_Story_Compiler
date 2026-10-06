@@ -96,6 +96,33 @@ def test_provider_errors_do_not_expose_remote_response_or_credentials(tmp_path):
     api.close()
 
 
+def test_failed_local_generation_does_not_publish_partial_artifact(tmp_path, monkeypatch):
+    import json
+    from pathlib import Path
+
+    from storycompiler.generation import LocalGenerator
+
+    ready = tmp_path / "models/sd-turbo/READY"
+    ready.parent.mkdir(parents=True)
+    ready.touch()
+    output = tmp_path / "frame.png"
+
+    class FailedProcess:
+        returncode = 1
+
+        def __init__(self, command, **kwargs):
+            request = json.loads(Path(command[-1]).read_text())
+            Path(request["output"]).write_bytes(b"interrupted PNG")
+
+        def poll(self):
+            return self.returncode
+
+    monkeypatch.setattr("storycompiler.generation.subprocess.Popen", FailedProcess)
+    with pytest.raises(ProviderError):
+        LocalGenerator(tmp_path, lambda: False).image("A tree", output, 42)
+    assert not output.exists(), "Resume must not mistake an incomplete image for a checkpoint"
+
+
 @pytest.mark.parametrize("stage,thinking", [("scene-director", True), ("narrative-critic", False)])
 def test_local_reasoning_is_an_explicit_per_job_model_option(tmp_path, stage, thinking):
     from storycompiler.contracts import CriticReport
