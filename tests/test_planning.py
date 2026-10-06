@@ -97,6 +97,15 @@ def test_analysis_rejects_fabricated_source_evidence(tmp_path):
         Planner(repo, AnalysisModel(), lambda *_: None).analyze(p)
 
 
+def test_evidence_quotes_match_wrapped_source_without_inventing_words(tmp_path):
+    Planner, Repo = modules()
+    repo = Repo(tmp_path)
+    p = repo.create_project("Test", "The mouse frees\nthe lion.", CreativeBrief().model_dump())
+    Planner(repo, AnalysisModel(), lambda *_: None).analyze(p)
+    event = p["events"][0]
+    assert p["source"][event["source_start"] : event["source_end"]] == "The mouse frees\nthe lion."
+
+
 def test_http_llm_uses_structured_contract_and_reports_provider_errors(tmp_path):
     assert importlib.util.find_spec("storycompiler.providers"), "Provider adapters are missing"
     import httpx

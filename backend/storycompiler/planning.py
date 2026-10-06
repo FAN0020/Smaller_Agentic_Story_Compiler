@@ -1,6 +1,7 @@
 """Narrow agents coordinated by deterministic, checkpointed application logic."""
 
 import math
+import re
 import time
 
 from .contracts import BibleDraft, ChunkAnalysis, CriticReport, EpisodeBatch, SceneBatch, ShotBatch, ShotPlan
@@ -28,12 +29,27 @@ class Planner:
             if chunk.id in p["analyses"]:
                 continue
             self.progress(i / len(chunks) * 0.7, f"Reading story section {i + 1} of {len(chunks)}…")
-            analysis = self.llm.generate("source-analysis", {"source": chunk.model_dump()}, ChunkAnalysis)
-            for event in analysis.events:
-                if not event.quote.strip() or event.quote not in chunk.text:
-                    raise ValueError(
-                        f"Source evidence is not an exact quote in section {i + 1}; retry analysis"
-                    )
+            errors = []
+            for attempt in range(3):
+                analysis = self.llm.generate(
+                    "source-analysis",
+                    {"source": chunk.model_dump(), "repair_feedback": errors},
+                    ChunkAnalysis,
+                )
+                errors = []
+                for event in analysis.events:
+                    pattern = r"\s+".join(re.escape(word) for word in event.quote.split())
+                    match = re.search(pattern, chunk.text) if pattern else None
+                    if match is None:
+                        errors.append(
+                            f"Copy a shorter exact evidence quote for: {event.summary}. Invalid quote: {event.quote}"
+                        )
+                    else:
+                        event.quote = match.group(0)
+                if not errors:
+                    break
+            if errors:
+                raise ValueError(f"Source evidence could not be grounded in section {i + 1} after 3 attempts")
             p["analyses"][chunk.id] = analysis.model_dump()
             self.checkpoint(p, f"Read section {i + 1} of {len(chunks)}", (i + 1) / len(chunks) * 0.7)
         events = []
