@@ -138,8 +138,8 @@ export default function ModelSettings({
                 checked={!!form.llm_reasoning}
                 onChange={(e) => set("llm_reasoning", e.target.checked)}
               />
-              Enable additional reasoning · requires a supported model; takes
-              longer
+              Reasoning for episode, scene and shot planning · supported models
+              only; takes longer
             </label>
           )}
         </section>

@@ -96,7 +96,8 @@ def test_provider_errors_do_not_expose_remote_response_or_credentials(tmp_path):
     api.close()
 
 
-def test_local_reasoning_is_an_explicit_per_job_model_option(tmp_path):
+@pytest.mark.parametrize("stage,thinking", [("scene-director", True), ("narrative-critic", False)])
+def test_local_reasoning_is_an_explicit_per_job_model_option(tmp_path, stage, thinking):
     from storycompiler.contracts import CriticReport
     from storycompiler.providers import JsonLLM
 
@@ -107,11 +108,11 @@ def test_local_reasoning_is_an_explicit_per_job_model_option(tmp_path):
         import json
 
         body = json.loads(request.content)
-        assert body["think"] is True
+        assert body["think"] is thinking
         return httpx.Response(
             200, json={"message": {"content": '{"findings":[],"strengths":[],"summary":"Checked"}'}}
         )
 
     llm = JsonLLM(store, client=httpx.Client(transport=httpx.MockTransport(handler)))
-    assert llm.generate("narrative-critic", {}, CriticReport).findings == []
+    assert llm.generate(stage, {}, CriticReport).findings == []
     llm.close()

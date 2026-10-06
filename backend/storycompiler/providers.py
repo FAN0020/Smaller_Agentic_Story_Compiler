@@ -22,6 +22,7 @@ class JsonLLM:
 
     def generate(self, stage, context, schema):
         settings = self.settings
+        thinking = settings.llm_reasoning and stage in {"episode-planner", "scene-director", "shot-director"}
         system = BASE + "\n" + STAGES[stage]
         text = json.dumps(context, ensure_ascii=False)
         contract = schema.model_json_schema()
@@ -38,7 +39,7 @@ class JsonLLM:
                     "messages": messages,
                     "format": contract,
                     "stream": False,
-                    "think": settings.llm_reasoning,
+                    "think": thinking,
                     "keep_alive": "3m",
                     "options": {"temperature": 0.2, "num_ctx": 32768, "num_predict": 14000},
                 }
@@ -96,9 +97,7 @@ class JsonLLM:
                     "prompt_version": VERSION,
                     "model": settings.llm_model,
                     "provider": settings.llm_provider,
-                    "reasoning_requested": settings.llm_reasoning
-                    if settings.llm_provider == "ollama"
-                    else None,
+                    "reasoning_requested": thinking if settings.llm_provider == "ollama" else None,
                     "seconds": round(time.monotonic() - start, 2),
                     "attempts": attempt + 1,
                     "tokens": data.get("eval_count", data.get("usage", {}).get("completion_tokens")),
