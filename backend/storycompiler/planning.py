@@ -10,7 +10,7 @@ from .contracts import (
     ChunkAnalysis,
     CriticReport,
     SceneBoundaryBatch,
-    ShotBatch,
+    ShotDraftBatch,
     ShotPlan,
 )
 from .domain import STYLE_BY_ID, CreativeBrief, chunk_source, fingerprint
@@ -64,6 +64,28 @@ def compile_scenes(candidates, events, target_seconds, episode_number, bible_has
         }
         for i, scene in enumerate(candidates)
     ]
+
+
+def compile_shots(candidates, scene, bible_hash, events):
+    by_number = {e["event_number"]: e["id"] for e in events}
+    result = []
+    for i, candidate in enumerate(candidates):
+        if not set(candidate["source_event_numbers"]) <= set(by_number):
+            raise ValueError("Every source_event_number must belong to the supplied scene events")
+        result.append(
+            ShotPlan.model_validate(
+                {k: v for k, v in candidate.items() if k != "source_event_numbers"}
+                | {
+                    "id": f"{scene['id']}-sh{i + 1}",
+                    "scene_id": scene["id"],
+                    "bible_hash": bible_hash,
+                    "duration": 4,
+                    "location_id": scene["location_id"],
+                    "source_event_ids": [by_number[n] for n in candidate["source_event_numbers"]],
+                }
+            )
+        )
+    return result
 
 
 class ReviewRequired(ValueError):
@@ -413,9 +435,26 @@ class Planner:
                             "repair_feedback": errors,
                             "previous_candidate": [s.model_dump() for s in shots] if attempt else None,
                         },
-                        ShotBatch,
+                        ShotDraftBatch,
                     )
-                    shots = result.shots
+                    try:
+                        shots = compile_shots(
+                            [s.model_dump() for s in result.shots],
+                            scene,
+                            p["bible_hash"],
+                            shot_context(context, scene)["source_events"],
+                        )
+                    except ValueError as e:
+                        errors = [str(e)]
+                        plan["attempts"].append(
+                            {
+                                "scene": scene["id"],
+                                "attempt": attempt + 1,
+                                "errors": errors,
+                                "candidate": result.model_dump(),
+                            }
+                        )
+                        continue
                     errors = validate_shots(
                         shots,
                         p["bible_hash"],

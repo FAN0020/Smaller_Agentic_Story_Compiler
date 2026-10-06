@@ -5,7 +5,7 @@ import json
 from .contracts import ShotPlan
 
 
-def compile_shot(shot: ShotPlan, bible: dict, limit: int = 12000) -> str:
+def compile_shot(shot: ShotPlan, bible: dict, limit: int = 12000, scene: dict | None = None) -> str:
     chars = [c for c in bible["characters"] if c["id"] in shot.characters]
     loc = next(x for x in bible["locations"] if x["id"] == shot.location_id)
     pieces = [
@@ -17,6 +17,8 @@ def compile_shot(shot: ShotPlan, bible: dict, limit: int = 12000) -> str:
         + "; ".join(p.behavior + ("; gaze " + p.gaze if p.gaze else "") for p in shot.performance),
         "Camera: " + ", ".join(v for v in shot.camera.model_dump().values() if v),
         f"Location: {loc['name']}, {loc['appearance']}. {loc.get('geography', '')}. {loc.get('lighting', '')}",
+        "Scene geography, light and environment: "
+        + "; ".join((scene or {}).get(field, "") for field in ("geography", "lighting", "environment")),
         "Blocking: " + shot.blocking,
         "Start: " + json.dumps(shot.start_state, ensure_ascii=False),
         "End: " + json.dumps(shot.end_state, ensure_ascii=False),

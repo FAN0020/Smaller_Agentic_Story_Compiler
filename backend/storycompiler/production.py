@@ -196,7 +196,8 @@ class Producer:
                 self.progress(
                     completed / total, f"Rendering Episode {number}, shot {i + 1} of {len(plan['shots'])}…"
                 )
-                prompt = compile_shot(shot, p["bible"])
+                scene = next(s for s in plan["scenes"] if s["id"] == shot.scene_id)
+                prompt = compile_shot(shot, p["bible"], scene=scene)
                 receipt.update(
                     prompt=prompt,
                     seed=self.settings.seed + number * 1000 + i,

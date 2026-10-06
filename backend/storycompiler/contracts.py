@@ -230,6 +230,19 @@ class ShotBatch(Contract):
     shots: list[ShotPlan] = Field(min_length=1)
 
 
+class ShotDraft(ShotPlan):
+    id: str = ""
+    scene_id: str = ""
+    bible_hash: str = ""
+    duration: int = 4
+    source_event_ids: list[str] = Field(default_factory=list)
+    source_event_numbers: list[int] = Field(min_length=1)
+
+
+class ShotDraftBatch(Contract):
+    shots: list[ShotDraft] = Field(min_length=1)
+
+
 class CriticFinding(Contract):
     severity: Literal["error", "warning"]
     artifact_id: str

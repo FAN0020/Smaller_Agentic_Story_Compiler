@@ -156,3 +156,37 @@ def test_scene_boundaries_compile_ids_coverage_and_exact_timeline():
     assert scenes[0]["id"] == "ep3-sc1" and scenes[1]["bible_hash"] == "canon"
     with pytest.raises(ValueError):
         planning.compile_scenes(candidates, events, 64, 3, "canon")
+
+
+def test_compiler_carries_scene_geography_and_lighting_into_provider_prompt():
+    c, _ = api()
+    from storycompiler.compiler import compile_shot
+
+    bible = {
+        "characters": [{"id": "c1", "name": "Lion", "appearance": "golden"}],
+        "locations": [{"id": "l1", "name": "Forest", "appearance": "oaks"}],
+        "style_instruction": "watercolor",
+    }
+    scene = {
+        "lighting": "Moonlight from screen left",
+        "geography": "Trap between two oaks",
+        "environment": "Misty dawn",
+    }
+    prompt = compile_shot(c.ShotPlan(**shot_payload()), bible, scene=scene)
+    assert all(scene[field] in prompt for field in scene)
+
+
+def test_shot_compiler_owns_inherited_ids_duration_and_source_reference_resolution():
+    from storycompiler import planning
+
+    assert hasattr(planning, "compile_shots")
+    scene = {"id": "ep2-sc3", "location_id": "l1"}
+    candidate = shot_payload() | {"source_event_numbers": [7], "bible_hash": "wrong", "duration": 99}
+    shots = planning.compile_shots([candidate], scene, "canon", [{"id": "ev7", "event_number": 7}])
+    assert shots[0].id == "ep2-sc3-sh1"
+    assert shots[0].bible_hash == "canon" and shots[0].duration == 4
+    assert shots[0].source_event_ids == ["ev7"]
+    with pytest.raises(ValueError):
+        planning.compile_shots(
+            [candidate | {"source_event_numbers": [8]}], scene, "canon", [{"id": "ev7", "event_number": 7}]
+        )
