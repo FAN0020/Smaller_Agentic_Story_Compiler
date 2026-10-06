@@ -16,6 +16,7 @@ from .domain import Contract
 class ModelSettings(Contract):
     llm_provider: Literal["ollama", "openai", "compatible"] = "ollama"
     llm_model: str = "qwen3.5:4b"
+    llm_reasoning: bool = False
     llm_endpoint: str = "http://127.0.0.1:11434"
     image_provider: Literal["local", "openai"] = "local"
     image_model: str = "stabilityai/sd-turbo"

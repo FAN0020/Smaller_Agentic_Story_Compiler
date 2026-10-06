@@ -131,6 +131,17 @@ export default function ModelSettings({
               />
             </label>
           )}
+          {form.llm_provider === "ollama" && (
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={!!form.llm_reasoning}
+                onChange={(e) => set("llm_reasoning", e.target.checked)}
+              />
+              Enable additional reasoning · requires a supported model; takes
+              longer
+            </label>
+          )}
         </section>
         <section className="settings-section">
           <h3>Visual references</h3>

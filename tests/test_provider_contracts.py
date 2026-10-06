@@ -94,3 +94,24 @@ def test_provider_errors_do_not_expose_remote_response_or_credentials(tmp_path):
     assert "401" in str(failure.value)
     assert "sk-test" not in str(failure.value) and "internal detail" not in str(failure.value)
     api.close()
+
+
+def test_local_reasoning_is_an_explicit_per_job_model_option(tmp_path):
+    from storycompiler.contracts import CriticReport
+    from storycompiler.providers import JsonLLM
+
+    store = SettingsStore(tmp_path)
+    store.update({"llm_reasoning": True})
+
+    def handler(request):
+        import json
+
+        body = json.loads(request.content)
+        assert body["think"] is True
+        return httpx.Response(
+            200, json={"message": {"content": '{"findings":[],"strengths":[],"summary":"Checked"}'}}
+        )
+
+    llm = JsonLLM(store, client=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert llm.generate("narrative-critic", {}, CriticReport).findings == []
+    llm.close()

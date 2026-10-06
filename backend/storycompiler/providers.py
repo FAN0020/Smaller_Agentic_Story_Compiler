@@ -38,7 +38,7 @@ class JsonLLM:
                     "messages": messages,
                     "format": contract,
                     "stream": False,
-                    "think": False,
+                    "think": settings.llm_reasoning,
                     "keep_alive": "3m",
                     "options": {"temperature": 0.2, "num_ctx": 32768, "num_predict": 14000},
                 }
@@ -96,6 +96,9 @@ class JsonLLM:
                     "prompt_version": VERSION,
                     "model": settings.llm_model,
                     "provider": settings.llm_provider,
+                    "reasoning_requested": settings.llm_reasoning
+                    if settings.llm_provider == "ollama"
+                    else None,
                     "seconds": round(time.monotonic() - start, 2),
                     "attempts": attempt + 1,
                     "tokens": data.get("eval_count", data.get("usage", {}).get("completion_tokens")),
