@@ -190,3 +190,21 @@ def test_shot_compiler_owns_inherited_ids_duration_and_source_reference_resoluti
         planning.compile_shots(
             [candidate | {"source_event_numbers": [8]}], scene, "canon", [{"id": "ev7", "event_number": 7}]
         )
+
+
+def test_opening_frame_prompt_cannot_jump_ahead_to_the_shot_end_state():
+    c, _ = api()
+    from storycompiler import compiler
+
+    assert hasattr(compiler, "compile_frame")
+    shot = c.ShotPlan(**shot_payload())
+    bible = {
+        "characters": [{"id": "c1", "name": "Lion", "appearance": "golden mane"}],
+        "locations": [{"id": "l1", "name": "Forest", "appearance": "oaks"}],
+        "style_instruction": "watercolor",
+    }
+    prompt = compiler.compile_frame(shot, bible, {"lighting": "morning", "geography": "tree left"})
+    assert '"paw": "closed"' in prompt
+    assert '"paw": "open"' not in prompt
+    assert shot.action not in prompt
+    assert "golden mane" in prompt and "morning" in prompt

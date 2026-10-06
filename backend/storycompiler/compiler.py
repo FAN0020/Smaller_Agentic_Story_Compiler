@@ -5,6 +5,28 @@ import json
 from .contracts import ShotPlan
 
 
+def compile_frame(shot: ShotPlan, bible: dict, scene: dict) -> str:
+    characters = [c for c in bible["characters"] if c["id"] in shot.characters]
+    location = next(l for l in bible["locations"] if l["id"] == shot.location_id)
+    return "\n".join(
+        [
+            bible["style_instruction"],
+            "A single unified cinematic opening frame. All subjects share one environment. No panels, collage, labels or text.",
+            "Subjects: "
+            + "; ".join(f"{c['name']}: {c['appearance']}; {c.get('costume', '')}" for c in characters),
+            f"Location: {location['name']}, {location['appearance']}",
+            "Scene: " + "; ".join(scene.get(k, "") for k in ("geography", "lighting", "environment")),
+            "Depict this exact starting state before any movement: "
+            + json.dumps(shot.start_state, ensure_ascii=False),
+            "Framing: "
+            + ", ".join(
+                v for k, v in shot.camera.model_dump().items() if v and k not in ("movement", "motivation")
+            ),
+            "Keep unchanged: " + "; ".join(shot.locked),
+        ]
+    )
+
+
 def compile_shot(shot: ShotPlan, bible: dict, limit: int = 12000, scene: dict | None = None) -> str:
     chars = [c for c in bible["characters"] if c["id"] in shot.characters]
     loc = next(x for x in bible["locations"] if x["id"] == shot.location_id)

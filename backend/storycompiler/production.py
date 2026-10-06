@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
-from .compiler import compile_shot
+from .compiler import compile_frame, compile_shot
 from .contracts import ShotPlan
 from .domain import STYLE_BY_ID, fingerprint
 from .generation import LocalGenerator, OpenAIGenerator
@@ -211,11 +211,7 @@ class Producer:
                     for entity in [*shot.characters, shot.location_id]
                 ]
                 if not frame.exists():
-                    # A local 77-token encoder is handled by explicit multi-window encoding in the worker.
-                    still_prompt = (
-                        f"{STYLE_BY_ID[p['brief']['style']].name} painting. "
-                        + prompt.split("Subjects: ", 1)[1].split("Sound:", 1)[0]
-                    )
+                    still_prompt = compile_frame(shot, p["bible"], scene)
                     self.image(still_prompt, frame, receipt["seed"], refs)
                 raw = directory / f"ep{number}-{i + 1:03}-raw.mp4"
                 if not raw.exists():
