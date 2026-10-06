@@ -2,11 +2,13 @@
 
 import json
 import time
+from contextlib import nullcontext
 
 import httpx
 from pydantic import ValidationError
 
 from .prompts import BASE, STAGES, VERSION
+from .resources import inference_lease
 
 
 class ProviderError(RuntimeError):
@@ -21,6 +23,11 @@ class JsonLLM:
         self.record = record or (lambda *_: None)
 
     def generate(self, stage, context, schema):
+        lease = inference_lease() if self.settings.llm_provider == "ollama" else nullcontext()
+        with lease:
+            return self._generate(stage, context, schema)
+
+    def _generate(self, stage, context, schema):
         settings = self.settings
         thinking = settings.llm_reasoning and stage in {"episode-planner", "scene-director", "shot-director"}
         system = BASE + "\n" + STAGES[stage]
@@ -40,7 +47,7 @@ class JsonLLM:
                     "format": contract,
                     "stream": False,
                     "think": thinking,
-                    "keep_alive": "3m",
+                    "keep_alive": 0,
                     "options": {"temperature": 0.2, "num_ctx": 32768, "num_predict": 14000},
                 }
                 headers = {}

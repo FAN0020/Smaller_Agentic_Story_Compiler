@@ -154,6 +154,7 @@ def test_local_reasoning_is_an_explicit_per_job_model_option(tmp_path, stage, th
 
         body = json.loads(request.content)
         assert body["think"] is thinking
+        assert body["keep_alive"] == 0
         return httpx.Response(
             200, json={"message": {"content": '{"findings":[],"strengths":[],"summary":"Checked"}'}}
         )

@@ -14,6 +14,10 @@ def main():
     root = Path(request["models"])
     output = Path(request["output"])
     device = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
+    if device == "mps":
+        limit = request["memory_limit_gib"] * 1024**3
+        torch.mps.set_per_process_memory_fraction(min(0.85, limit / torch.mps.recommended_max_memory()))
+    torch.set_num_threads(4)
     generator = torch.Generator("cpu").manual_seed(request["seed"])
     if request["kind"] == "image" and request.get("model_id") == "black-forest-labs/FLUX.2-klein-4B":
         from diffusers import Flux2KleinPipeline

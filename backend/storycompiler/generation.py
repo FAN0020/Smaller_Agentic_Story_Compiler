@@ -9,9 +9,11 @@ import time
 from pathlib import Path
 
 import httpx
+import psutil
 from PIL import Image, ImageOps
 
 from .providers import ProviderError
+from .resources import GIB, ResourceError, check_capacity, inference_lease, runtime_violation, snapshot
 from .settings import LOCAL_IMAGE_MODELS
 
 
@@ -35,11 +37,18 @@ class LocalGenerator:
         self.cancelled = cancelled
 
     def _run(self, kind, prompt, output, seed, **options):
+        with inference_lease():
+            return self._run_locked(kind, prompt, output, seed, **options)
+
+    def _run_locked(self, kind, prompt, output, seed, **options):
+        model_id = options.get("model_id", "Lightricks/LTX-Video-0.9.1")
         model = LOCAL_IMAGE_MODELS[options["model_id"]] if kind == "image" else "ltx-video"
         if not (self.root / "models" / model / "READY").exists():
             raise ValueError(
                 f"Local {kind} model is not installed. Run .venv/bin/python scripts/setup_models.py {kind}"
             )
+        initial = snapshot(self.root)
+        budget = check_capacity(model_id, initial)
         output = Path(output).resolve()
         partial = partial_path(output)
         request = output.with_suffix(".request.json")
@@ -51,12 +60,20 @@ class LocalGenerator:
                     "output": str(partial),
                     "models": str(self.root / "models"),
                     "seed": seed,
+                    "memory_limit_gib": min(budget * 1.25, initial.available - 2),
+                    "resource_snapshot": initial.record(),
                     **options,
                 }
             )
         )
         log = output.with_suffix(".inference.log")
-        env = {**os.environ, "PYTORCH_ENABLE_MPS_FALLBACK": "1", "TOKENIZERS_PARALLELISM": "false"}
+        env = {
+            **os.environ,
+            "PYTORCH_ENABLE_MPS_FALLBACK": "1",
+            "TOKENIZERS_PARALLELISM": "false",
+            "PYTORCH_MPS_HIGH_WATERMARK_RATIO": "1.0",
+            "PYTORCH_MPS_LOW_WATERMARK_RATIO": "0.8",
+        }
         with log.open("w") as stream:
             proc = subprocess.Popen(
                 [sys.executable, "-m", "storycompiler.local_worker", str(request)],
@@ -66,13 +83,23 @@ class LocalGenerator:
             )
             started = time.monotonic()
             while proc.poll() is None:
-                if self.cancelled() or time.monotonic() - started > 2400:
+                current = snapshot(self.root)
+                try:
+                    rss = psutil.Process(proc.pid).memory_info().rss / GIB
+                except psutil.NoSuchProcess:
+                    continue
+                reason = runtime_violation(initial, current, rss, min(budget * 1.25, initial.available - 2))
+                if reason or self.cancelled() or time.monotonic() - started > 2400:
                     proc.terminate()
                     try:
                         proc.wait(timeout=15)
                     except subprocess.TimeoutExpired:
                         proc.kill()
                         proc.wait()
+                    if reason:
+                        raise ResourceError(
+                            "Local generation stopped safely: " + reason + ". Saved artifacts are retained."
+                        )
                     if self.cancelled():
                         raise Cancelled("Production cancelled; completed clips are saved")
                     raise ProviderError("Local generation exceeded 40 minutes; reduce model settings")
