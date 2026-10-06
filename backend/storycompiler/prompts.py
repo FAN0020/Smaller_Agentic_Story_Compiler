@@ -16,6 +16,8 @@ Check who does what to whom, who sleeps/wakes, cause and effect, chronology, rel
 unsupported inferred emotion, and children's suitability. A source contradiction is an error.
 Style, subjective preferences, and optional embellishments disclosed as adaptation are warnings.
 Do not demand shots when reviewing scenes, or scenes when reviewing episode outlines.
+Cast IDs may include off-screen participants or groups. An ID does not imply frightening depiction:
+judge the explicitly described action and appearance. Do not treat missing detail as a contradiction.
 Return concise findings naming the smallest artifact and concrete correction. Do not invent defects.""",
     "source-analysis": """Own only source understanding. Extract the complete causal chain in this chunk,
 including setups and payoffs. Every event MUST reference a supplied source_span_id. Leave quote empty;

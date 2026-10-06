@@ -22,6 +22,7 @@ from .planning import Planner
 from .production import Producer, assert_production_approved
 from .settings import SettingsStore
 from .storage import Repository
+from .validation import assert_references_frozen
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SAMPLES = PROJECT_ROOT / "docs/stories"
@@ -213,6 +214,8 @@ def create_app(root: Path | None = None, start_worker=True):
                 Planner.assert_frozen(p)
             if body.kind in ("direct", "render"):
                 validate_numbers(p, body.numbers)
+            if body.kind == "episodes":
+                assert_references_frozen(p)
             if body.kind == "render":
                 assert_production_approved(p, body.numbers)
             if body.kind == "analyze" and p["bible_hash"]:

@@ -14,7 +14,13 @@ from .contracts import (
     ShotPlan,
 )
 from .domain import STYLE_BY_ID, CreativeBrief, chunk_source, fingerprint
-from .validation import validate_outline, validate_scenes, validate_shots, validate_timeline
+from .validation import (
+    assert_references_frozen,
+    validate_outline,
+    validate_scenes,
+    validate_shots,
+    validate_timeline,
+)
 
 
 def shot_context(context, scene):
@@ -209,6 +215,7 @@ class Planner:
 
     def episodes(self, p):
         self.assert_frozen(p)
+        assert_references_frozen(p)
         brief = CreativeBrief.model_validate(p["brief"])
         completed = {e for ep in p["episodes"] for e in ep["source_event_ids"]}
         remaining = [e for e in p["events"] if e["id"] not in completed]
@@ -248,6 +255,7 @@ class Planner:
                     ep["source_event_ids"] = coverage[i]
                     ep["number"] = len(p["episodes"]) + i + 1
                     ep["bible_hash"] = p["bible_hash"]
+                    ep["references_hash"] = p["references_hash"]
                     ep["target_seconds"] = brief.target_seconds
                 actual = [eid for ep in eps for eid in ep["source_event_ids"]]
                 errors = (
@@ -328,7 +336,13 @@ class Planner:
                 for attempt in range(3):
                     self.progress(index / len(numbers), f"Designing Episode {number} scenes…")
                     candidate = self.llm.generate(
-                        "scene-director", {**context, "repair_feedback": errors}, SceneBoundaryBatch
+                        "scene-director",
+                        {
+                            **context,
+                            "repair_feedback": errors,
+                            "previous_candidate": plan.get("scene_attempts", [{}])[-1].get("candidate"),
+                        },
+                        SceneBoundaryBatch,
                     )
                     try:
                         scenes = compile_scenes(

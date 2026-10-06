@@ -204,11 +204,11 @@ export default function PlanView({
                     disabled={busy}
                     onClick={() =>
                       void act("/approve", { kind: "bible" })
-                        .then(() => job("episodes"))
+                        .then(() => navigate("Production"))
                         .catch(() => {})
                     }
                   >
-                    <LockKeyhole size={15} /> Freeze bible & plan episodes{" "}
+                    <LockKeyhole size={15} /> Freeze bible & design references{" "}
                     <ArrowRight size={16} />
                   </Button>
                 </div>
@@ -243,11 +243,18 @@ export default function PlanView({
                 )}
               </>
             )}
-            {p.bible_hash && p.episodes.length === 0 && !busy && (
-              <Button onClick={() => void job("episodes")}>
-                Plan episode structure <ArrowRight size={16} />
-              </Button>
-            )}
+            {p.bible_hash &&
+              p.episodes.length === 0 &&
+              !busy &&
+              (p.references_hash ? (
+                <Button onClick={() => void job("episodes")}>
+                  Plan episode structure <ArrowRight size={16} />
+                </Button>
+              ) : (
+                <Button onClick={() => navigate("Production")}>
+                  Design & approve visual references <ArrowRight size={16} />
+                </Button>
+              ))}
           </section>
           {p.episodes.length > 0 && (
             <section className="section">

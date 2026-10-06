@@ -1,6 +1,21 @@
 """Deterministic hard gates; deliberately make no claim about artistic quality."""
 
 from .contracts import ShotPlan
+from .domain import fingerprint
+
+
+def reference_manifest(p):
+    return {k: {"sha256": v["sha256"], "bible_hash": v["bible_hash"]} for k, v in p["references"].items()}
+
+
+def assert_references_frozen(p):
+    expected = {x["id"] for name in ("characters", "locations") for x in p["bible"][name]}
+    if set(p["references"]) != expected or not all(r.get("approved") for r in p["references"].values()):
+        raise ValueError("Approve every character and location reference before dividing episodes")
+    if any(r["bible_hash"] != p["bible_hash"] for r in p["references"].values()):
+        raise ValueError("Visual references must inherit the frozen bible")
+    if not p["references_hash"] or p["references_hash"] != fingerprint(reference_manifest(p)):
+        raise ValueError("Visual references changed after approval")
 
 
 def validate_scenes(scenes, target_seconds, event_ids, character_ids, location_ids):

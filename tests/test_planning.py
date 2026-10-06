@@ -221,3 +221,16 @@ def test_http_llm_uses_structured_contract_and_reports_provider_errors(tmp_path)
         llm.generate("source-analysis", {}, ChunkAnalysis)
     assert "secret-should-not-leak" not in str(e.value)
     assert "401" in str(e.value)
+
+
+def test_episode_division_requires_frozen_character_and_location_images(tmp_path):
+    Planner, Repo = modules()
+    repo = Repo(tmp_path)
+    p = repo.create_project(
+        "Test", "The mouse frees the lion.", CreativeBrief(target_seconds=60).model_dump()
+    )
+    planner = Planner(repo, AnalysisModel(), lambda *_: None)
+    planner.analyze(p)
+    planner.freeze(p)
+    with pytest.raises(ValueError, match="reference"):
+        planner.episodes(p)

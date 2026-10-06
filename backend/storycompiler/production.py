@@ -20,6 +20,7 @@ from .media import (
     write_subtitles,
 )
 from .planning import Planner
+from .validation import assert_references_frozen, reference_manifest
 
 
 def file_hash(path):
@@ -30,17 +31,9 @@ def file_hash(path):
     return h.hexdigest()
 
 
-def reference_manifest(p):
-    return {k: {"sha256": v["sha256"], "bible_hash": v["bible_hash"]} for k, v in p["references"].items()}
-
-
 def assert_production_approved(p, numbers):
     Planner.assert_frozen(p)
-    expected = {x["id"] for name in ("characters", "locations") for x in p["bible"][name]}
-    if set(p["references"]) != expected or not all(r.get("approved") for r in p["references"].values()):
-        raise ValueError("Approve every character and location reference before production")
-    if not p["references_hash"] or p["references_hash"] != fingerprint(reference_manifest(p)):
-        raise ValueError("Visual references changed after approval")
+    assert_references_frozen(p)
     for number in numbers:
         plan = p["plans"].get(str(number), {})
         current = fingerprint(
