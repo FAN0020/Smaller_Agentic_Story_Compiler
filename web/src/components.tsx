@@ -155,9 +155,19 @@ export function EpisodePicker({
 }) {
   const [draft, setDraft] = useState(selected.join(", "));
   const [editing, setEditing] = useState(false);
+  const [countDraft, setCountDraft] = useState("");
+  const [editingCount, setEditingCount] = useState(false);
   useEffect(() => {
     if (!editing) setDraft(selected.join(", "));
   }, [selected, editing]);
+  useEffect(() => {
+    if (!editingCount) {
+      const fromStart = selected.every((n, i) => n === i + 1);
+      setCountDraft(
+        fromStart && selected.length ? String(selected.length) : "",
+      );
+    }
+  }, [selected, editingCount]);
   const choices = [
     { key: "one", label: "1 episode · test", numbers: [1] },
     {
@@ -196,6 +206,28 @@ export function EpisodePicker({
           </button>
         ))}
       </div>
+      <label className="inline-field">
+        First N episodes
+        <input
+          type="number"
+          min={1}
+          max={count}
+          aria-label="Custom episode count"
+          placeholder="Count"
+          value={countDraft}
+          onFocus={() => setEditingCount(true)}
+          onBlur={() => setEditingCount(false)}
+          onChange={(e) => {
+            setCountDraft(e.target.value);
+            const amount = Number(e.target.value);
+            setSelected(
+              Number.isInteger(amount) && amount >= 1 && amount <= count
+                ? Array.from({ length: amount }, (_, i) => i + 1)
+                : [],
+            );
+          }}
+        />
+      </label>
       <label className="inline-field">
         Custom episodes{" "}
         <input
