@@ -5,7 +5,6 @@ import re
 import time
 
 from .contracts import (
-    AudioScript,
     BibleDraft,
     BoundaryBatch,
     ChunkAnalysis,
@@ -13,9 +12,11 @@ from .contracts import (
     SceneBoundaryBatch,
     ShotDraftBatch,
     ShotPlan,
+    scene_audio_schema,
 )
 from .domain import STYLE_BY_ID, CreativeBrief, chunk_source, fingerprint
 from .prompts import VERSION
+from .speech import compile_cues
 from .validation import (
     assert_references_frozen,
     validate_outline,
@@ -120,17 +121,122 @@ class ReviewRequired(ValueError):
     pass
 
 
-def apply_audio_script(shots, lines):
-    mapping = {line["shot_id"]: line["text"] for line in lines}
-    if len(mapping) != len(lines) or set(mapping) != {s["id"] for s in shots}:
-        raise ValueError("The audio script must include every shot exactly once")
-    if any(len(text.split()) > 8 for text in mapping.values()):
-        raise ValueError("Keep each four-second spoken line to at most eight words")
-    for shot in shots:
-        shot["narration"] = mapping[shot["id"]]
+def audio_context(p, number, plan):
+    episode = next(e for e in p["episodes"] if e["number"] == number)
+    allowed = {eid for scene in plan["scenes"] for eid in scene["source_event_ids"]}
+    return {
+        "brief": p["brief"],
+        "characters": [
+            {k: c[k] for k in ("id", "name", "source_facts", "voice")} for c in p["bible"]["characters"]
+        ],
+        "source_events": [
+            e for e in p["events"] if e["id"] in episode["source_event_ids"] and e["id"] in allowed
+        ],
+        "scenes": [
+            {k: s[k] for k in ("id", "title", "duration", "source_event_ids")} for s in plan["scenes"]
+        ],
+        "shots": [
+            {k: s[k] for k in ("id", "scene_id", "duration", "action", "source_event_ids")}
+            for s in plan["shots"]
+        ],
+        "dialogue_opportunities": [
+            s["sound"]["dialogue"] for s in plan["shots"] if s["sound"].get("dialogue")
+        ],
+    }
+
+
+def apply_audio_script(shots, lines, characters, require_narration=True):
+    revised = [{**shot, "speech": [], "narration": ""} for shot in shots]
+    by_id = {shot["id"]: shot for shot in revised}
+    for line in lines:
+        if line["shot_id"] not in by_id:
+            raise ValueError("Audio cue references an unknown shot")
+        by_id[line["shot_id"]]["speech"].append({k: v for k, v in line.items() if k != "shot_id"})
+    compile_cues(revised, characters, require_narration=require_narration)
+    shots[:] = revised
 
 
 class Planner:
+    def audio(self, p, numbers):
+        from .contracts import PlanRevision
+        from .review import revise_plan
+
+        self.assert_frozen(p)
+        for number in numbers:
+            plan = p["plans"].get(str(number))
+            if not plan or not plan.get("shots"):
+                raise ValueError("Create the episode direction before writing its soundtrack")
+            if p["productions"].get(str(number), {}).get("clips"):
+                raise ValueError("Create a new take before changing a produced episode's soundtrack")
+            shots = self.write_audio(p, number, plan)
+            revise_plan(self.repo, p, number, PlanRevision(scenes=plan["scenes"], shots=shots))
+            p["audit"][-1]["action"] = "audio_director_revised"
+            p["plans"][str(number)]["critique"]["summary"] = (
+                "Soundtrack rewritten by the audio director. Review the narration and dialogue, then approve the revised plan."
+            )
+            self.repo.save_project(p)
+
+    def write_audio(self, p, number, plan):
+        """Scene scope prevents a spoken sentence from claiming a later scene's time/events."""
+        result = []
+        characters = {c["id"] for c in p["bible"]["characters"]}
+        for index, scene in enumerate(plan["scenes"]):
+            group = [dict(s) for s in plan["shots"] if s["scene_id"] == scene["id"]]
+            context = audio_context(p, number, {"scenes": [scene], "shots": group})
+            context["source_events"] = [
+                e for e in context["source_events"] if e["id"] in scene["source_event_ids"]
+            ]
+            context["scene_seconds"] = scene["duration"]
+            feedback = []
+            previous = None
+            for _ in range(3):
+                self.progress(
+                    index / len(plan["scenes"]),
+                    f"Writing Episode {number}, scene {index + 1} narration and dialogue…",
+                )
+                script = self.llm.generate(
+                    "audio-director",
+                    {**context, "repair_feedback": feedback, "previous_candidate": previous},
+                    scene_audio_schema([shot["id"] for shot in group], characters),
+                )
+                previous = script.model_dump()
+                candidate = [dict(shot) for shot in group]
+                review = None
+                try:
+                    apply_audio_script(
+                        candidate,
+                        [line.model_dump() for line in script.lines],
+                        characters,
+                        require_narration=index == 0,
+                    )
+                    cues = compile_cues(candidate, characters, require_narration=index == 0)
+                    for cue in cues:
+                        if len(cue["text"].split()) > (cue["deadline"] - cue["start"] - 0.3) * 2:
+                            raise ValueError(
+                                f"Sentence at {cue['shot_id']} has {len(cue['text'].split())} words but only {cue['deadline'] - cue['start']:.0f} seconds before the next cue or scene end. Maximum {int((cue['deadline'] - cue['start'] - 0.3) * 2)} words. Shorten this sentence, or remove/delay the overlapping next cue."
+                            )
+                    review, feedback = self.semantic_gate(
+                        context, "scene speech, speaker attribution and chronology", script.model_dump()
+                    )
+                except ValueError as e:
+                    feedback = [str(e)]
+                plan.setdefault("audio_attempts", []).append(
+                    {
+                        "scene_id": scene["id"],
+                        "candidate": script.model_dump(),
+                        "errors": feedback,
+                        "review": review,
+                    }
+                )
+                self.repo.save_project(p)
+                if not feedback:
+                    result.extend(candidate)
+                    break
+            else:
+                raise ReviewRequired("; ".join(feedback))
+        compile_cues(result, characters)
+        return result
+
     def __init__(self, repo, llm, progress, narration=True):
         self.repo, self.llm, self.progress = repo, llm, progress
         self.narration = narration
@@ -576,26 +682,11 @@ class Planner:
                 self.checkpoint(p, "Plan continuity requires review")
                 raise ReviewRequired("; ".join(errors[:5]))
             if self.narration:
-                basis = fingerprint([{k: v for k, v in s.items() if k != "narration"} for s in plan["shots"]])
+                basis = fingerprint(
+                    [{k: v for k, v in s.items() if k not in ("narration", "speech")} for s in plan["shots"]]
+                )
                 if plan.get("audio_basis") != basis:
-                    audio_errors = []
-                    for _ in range(3):
-                        self.progress(
-                            (index + 0.85) / len(numbers), f"Writing Episode {number} spoken track…"
-                        )
-                        script = self.llm.generate(
-                            "audio-director",
-                            {**context, "shots": plan["shots"], "repair_feedback": audio_errors},
-                            AudioScript,
-                        )
-                        try:
-                            apply_audio_script(plan["shots"], [line.model_dump() for line in script.lines])
-                            audio_errors = []
-                            break
-                        except ValueError as e:
-                            audio_errors = [str(e)]
-                    if audio_errors:
-                        raise ReviewRequired("; ".join(audio_errors))
+                    plan["shots"] = self.write_audio(p, number, plan)
                     plan["audio_basis"] = basis
                     self.checkpoint(p, f"Episode {number}: spoken track saved")
             self.progress((index + 0.9) / len(numbers), f"Checking Episode {number} direction…")

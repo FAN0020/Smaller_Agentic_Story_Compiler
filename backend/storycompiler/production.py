@@ -1,6 +1,7 @@
 """Approval-bound production, checkpointed at every expensive artifact boundary."""
 
 import hashlib
+import json
 import time
 import uuid
 from pathlib import Path
@@ -15,10 +16,12 @@ from .media import (
     extract_frame,
     normalize_clip,
     probe,
-    system_voice,
     write_subtitles,
 )
 from .planning import Planner
+from .settings import ModelSettings
+from .soundtrack import prepare_soundtrack
+from .speech import cue_intervals, mux_soundtrack, write_audio_subtitles
 from .validation import assert_references_frozen, reference_manifest
 
 
@@ -134,7 +137,9 @@ class Producer:
             plan["accepted_findings"] = accept_findings
         self.repo.save_project(p)
 
-    def render(self, p, numbers):
+    def render(self, p, numbers, speech_only=False):
+        if speech_only and self.settings.voice_provider == "none":
+            raise ValueError("Choose a speech model before previewing the soundtrack")
         assert_production_approved(p, numbers)
         directory = self.repo.artifact_dir(p["id"])
         for ref in p["references"].values():
@@ -148,7 +153,7 @@ class Producer:
             if not p["productions"].get(str(n), {}).get("clips", {}).get(s["id"], {}).get("file")
         )
         # Each clip may need a frame, a video and a voice call. Explicit ceiling avoids unbounded spend.
-        required_calls = missing * (2 + (self.settings.voice_provider == "openai"))
+        required_calls = missing * ((0 if speech_only else 2) + (self.settings.voice_provider == "openai"))
         if required_calls > self.settings.max_generation_calls:
             raise ValueError(
                 f"Up to {required_calls} generation calls required; raise the call budget in Model settings or select fewer episodes"
@@ -162,6 +167,7 @@ class Producer:
                 {
                     "prefix": f"take-{uuid.uuid4().hex[:8]}-",
                     "clips": {},
+                    "audio_version": 2,
                     "status": "rendering",
                     "settings": self.settings.model_dump(),
                     "plan_hash": plan["hash"],
@@ -173,12 +179,28 @@ class Producer:
                 or production["references_hash"] != p["references_hash"]
             ):
                 raise ValueError("Production lineage changed; create a revision")
-            if production["settings"] != self.settings.model_dump():
+            if (
+                ModelSettings.model_validate(production["settings"]).model_dump()
+                != self.settings.model_dump()
+            ):
                 raise ValueError(
                     "Models changed during this production. Restore the saved model settings to resume it."
                 )
+            if production.get("clips") and production.get("audio_version") != 2:
+                raise ValueError(
+                    "This older take uses per-clip speech. Create a new take to use the timed soundtrack."
+                )
             files = []
             prefix = production.get("prefix", "")
+            if self.settings.voice_provider != "none":
+                self.progress(
+                    completed / total, f"Recording and timing Episode {number} soundtrack before animation…"
+                )
+                prepare_soundtrack(self, p, number, production, directory)
+            if speech_only:
+                production["status"] = "speech_ready"
+                self.repo.save_project(p)
+                continue
             for i, payload in enumerate(plan["shots"]):
                 shot = ShotPlan.model_validate(payload)
                 receipt = production["clips"].setdefault(shot.id, {})
@@ -191,7 +213,20 @@ class Producer:
                     completed / total, f"Rendering Episode {number}, shot {i + 1} of {len(plan['shots'])}…"
                 )
                 scene = next(s for s in plan["scenes"] if s["id"] == shot.scene_id)
-                prompt = compile_shot(shot, p["bible"], scene=scene)
+                visual_shot = shot.model_copy(deep=True)
+                if self.settings.voice_provider != "none":
+                    visual_shot.sound.dialogue = ""
+                prompt = compile_shot(visual_shot, p["bible"], scene=scene)
+                if self.settings.voice_provider != "none":
+                    prompt += " Silent performance: no generated speech. Narration and character voices are added from the approved timed soundtrack."
+                    intervals = cue_intervals(
+                        production["soundtrack"]["cues"],
+                        sum(s["duration"] for s in plan["shots"][:i]),
+                        shot.duration,
+                    )
+                    receipt["speech_intervals"] = intervals
+                    prompt += " Planned voice-over intervals (seconds in this shot): " + json.dumps(intervals)
+                    prompt += " Support these delivery beats with the approved performance and pauses; preserve this shot's exact action and states. Do not imitate lip synchronization."
                 receipt.update(
                     prompt=prompt,
                     seed=self.settings.seed + number * 1000 + i,
@@ -238,20 +273,8 @@ class Producer:
                             lambda: self.repo.save_project(p),
                             p["brief"]["aspect"] == "9:16",
                         )
-                narration = None
-                if shot.narration and self.settings.voice_provider != "none":
-                    self.progress(
-                        (completed + 0.85) / total,
-                        f"Recording Episode {number}, line {i + 1} of {len(plan['shots'])}…",
-                    )
-                    narration = directory / f"{prefix}ep{number}-{i + 1:03}-voice.wav"
-                    if not narration.exists():
-                        if self.settings.voice_provider == "system":
-                            system_voice(shot.narration, narration, self.settings.voice)
-                        else:
-                            self.hosted().speech(shot.narration, narration, self.settings.voice)
                 size = (432, 768) if p["brief"]["aspect"] == "9:16" else (768, 432)
-                normalize_clip(raw, directory / file, shot.duration, size, narration)
+                normalize_clip(raw, directory / file, shot.duration, size)
                 receipt.update(
                     file=file,
                     sha256=file_hash(directory / file),
@@ -265,7 +288,11 @@ class Producer:
             output = directory / f"{prefix}episode-{number}.mp4"
             duration = assemble(files, output, p["brief"]["target_seconds"])
             subtitles = directory / f"{prefix}episode-{number}.vtt"
-            write_subtitles(plan["shots"], subtitles)
+            if production.get("soundtrack"):
+                mux_soundtrack(output, directory / production["soundtrack"]["file"])
+                write_audio_subtitles(production["soundtrack"]["cues"], subtitles)
+            else:
+                write_subtitles(plan["shots"], subtitles)
             samples = []
             for j, seconds in enumerate((0.25, duration / 2, max(0.25, duration - 0.5))):
                 sample = directory / f"{prefix}episode-{number}-sample-{j}.png"
@@ -282,7 +309,7 @@ class Producer:
                 else "generated_video",
                 technical_status="passed",
                 visual_status="human_review_required",
-                audio_notes="Narration is synthesized when selected. Foley and music are directing intent; local generation does not synthesize them.",
+                audio_notes="Narration and dialogue are recorded before animation at natural pace. Voice-over is not lip synchronization. Foley and music are directing intent; local generation does not synthesize them.",
                 sha256=file_hash(output),
             )
             p["status"] = "watch_ready"

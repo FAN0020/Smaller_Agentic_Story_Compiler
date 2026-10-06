@@ -1,0 +1,14 @@
+{
+  "version": "audio-v1",
+  "cases": [
+    {
+      "id": "lion-mouse-natural-soundtrack",
+      "split": "regression",
+      "input": "docs/stories/01_lion_mouse.txt",
+      "expected": ["narration establishes causes and transitions", "mouse plea is distinct character dialogue", "complete phrases span cuts when appropriate", "source chronology and rescue agency are preserved", "natural speech fits measured windows"],
+      "forbidden": ["all speech is dialogue", "all speech is copied four-second captions", "audio is truncated or automatically accelerated", "visual generation starts before speech timing passes"],
+      "evidence": "docs/implementation/IMPROVEMENTS.md",
+      "limits": "One regression story does not establish quality on novels or every language. Kokoro preset is English. Voice preference still requires listening review."
+    }
+  ]
+}

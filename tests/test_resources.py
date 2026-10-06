@@ -25,3 +25,32 @@ def test_independent_inference_lease_releases_after_failure(tmp_path):
         raise ValueError("Interrupted inference")
     with inference_lease(path):
         pass
+
+
+def test_guard_terminates_real_worker_when_memory_headroom_disappears(tmp_path, monkeypatch):
+    import subprocess
+    import sys
+
+    from storycompiler.generation import LocalGenerator
+
+    ready = tmp_path / "models/sd-turbo/READY"
+    ready.parent.mkdir(parents=True)
+    ready.touch()
+    initial = Snapshot(24, 12, 40, 0)
+    states = iter([initial, Snapshot(24, 1, 40, 0)])
+    monkeypatch.setattr("storycompiler.generation.snapshot", lambda _: next(states))
+    real_popen = subprocess.Popen
+    workers = []
+
+    def launch(*args, **kwargs):
+        child = real_popen([sys.executable, "-c", "import time; time.sleep(30)"], **kwargs)
+        workers.append(child)
+        return child
+
+    monkeypatch.setattr("storycompiler.generation.subprocess.Popen", launch)
+    with pytest.raises(ResourceError, match="stopped safely"):
+        LocalGenerator(tmp_path, lambda: False).image(
+            "Tree", tmp_path / "frame.png", 42, model="stabilityai/sd-turbo"
+        )
+    assert workers[0].poll() is not None
+    assert not (tmp_path / "frame.png").exists()

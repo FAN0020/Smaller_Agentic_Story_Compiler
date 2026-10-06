@@ -1,5 +1,6 @@
 """Loopback application API. Mutations validate state before entering the durable queue."""
 
+import importlib.util
 import os
 import shutil
 import threading
@@ -21,8 +22,10 @@ from .domain import STYLES, Contract, CreativeBrief
 from .jobs import JobWorker
 from .planning import Planner
 from .production import Producer, assert_production_approved
+from .resources import ResourceError, check_capacity, snapshot
 from .review import revise_plan
 from .settings import LOCAL_IMAGE_MODELS, SettingsStore
+from .speech import KOKORO_VOICES
 from .storage import Repository
 from .validation import assert_references_frozen
 
@@ -46,7 +49,7 @@ class NewProject(Contract):
 
 
 class JobRequest(Contract):
-    kind: Literal["analyze", "episodes", "references", "direct", "render"]
+    kind: Literal["analyze", "episodes", "references", "direct", "audio", "speech", "render"]
     numbers: list[int] = Field(default_factory=list)
     only: str | None = None
 
@@ -116,8 +119,9 @@ def create_app(root: Path | None = None, start_worker=True):
             "styles": [s.model_dump() for s in STYLES],
             "samples": samples,
             "models": {
-                "llm": ["qwen3.5:4b", "qwen3.5:9b", "gemma3:4b"],
-                "image": ["stabilityai/sd-turbo", "gpt-image-1"],
+                "llm": ["qwen3.5:4b", "qwen3.5:9b", "qwen3:8b", "gemma3:4b", "qwen2.5:1.5b-instruct"],
+                "image": [*LOCAL_IMAGE_MODELS, "gpt-image-1"],
+                "voices": KOKORO_VOICES,
                 "video": ["Lightricks/LTX-Video-0.9.1", "sora-2", "sora-2-pro"],
             },
         }
@@ -153,13 +157,43 @@ def create_app(root: Path | None = None, start_worker=True):
             "system_voice": bool(shutil.which("say")),
             "free_gib": round(shutil.disk_usage(root).free / 1024**3, 1),
         }
+        local["speech"] = (root / "models/kokoro/READY").exists() and importlib.util.find_spec(
+            "kokoro_onnx"
+        ) is not None
+        local["voices"] = KOKORO_VOICES
+        local["resources"] = snapshot(root).record()
+        local["image_options"] = []
+        for model, folder in LOCAL_IMAGE_MODELS.items():
+            reason = ""
+            try:
+                check_capacity(model, snapshot(root))
+            except ResourceError as e:
+                reason = str(e)
+            local["image_options"].append(
+                {
+                    "id": model,
+                    "installed": (root / "models" / folder / "READY").exists(),
+                    "resource_warning": reason,
+                }
+            )
         models = []
         try:
             if configured.llm_provider == "ollama":
                 response = httpx.get(configured.llm_endpoint + "/api/tags", timeout=3)
                 response.raise_for_status()
-                models = [m["name"] for m in response.json()["models"]]
-                llm = {"available": configured.llm_model in models, "models": models}
+                capabilities = {}
+                for candidate in response.json()["models"]:
+                    info = httpx.post(
+                        configured.llm_endpoint + "/api/show", json={"model": candidate["name"]}, timeout=3
+                    )
+                    info.raise_for_status()
+                    capabilities[candidate["name"]] = info.json().get("capabilities", [])
+                models = [name for name, caps in capabilities.items() if "completion" in caps]
+                llm = {
+                    "available": configured.llm_model in models,
+                    "models": models,
+                    "capabilities": capabilities,
+                }
             else:
                 llm = {"available": bool(settings.secret(configured.llm_provider)), "verified": False}
         except (httpx.HTTPError, ValueError, KeyError):
@@ -214,13 +248,13 @@ def create_app(root: Path | None = None, start_worker=True):
     def submit_job(id: str, body: JobRequest):
         with lock:
             p = repo.get_project(id)
-            if body.kind in ("episodes", "references", "direct", "render"):
+            if body.kind in ("episodes", "references", "direct", "audio", "speech", "render"):
                 Planner.assert_frozen(p)
-            if body.kind in ("direct", "render"):
+            if body.kind in ("direct", "audio", "speech", "render"):
                 validate_numbers(p, body.numbers)
             if body.kind == "episodes":
                 assert_references_frozen(p)
-            if body.kind == "render":
+            if body.kind in ("speech", "render"):
                 assert_production_approved(p, body.numbers)
             if body.kind == "analyze" and p["bible_hash"]:
                 raise ValueError("Create a revision to reanalyze a frozen story")

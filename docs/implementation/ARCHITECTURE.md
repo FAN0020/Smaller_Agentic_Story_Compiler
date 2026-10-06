@@ -4,7 +4,7 @@ The user's current request owns scope. Existing V4 documents are reference guida
 
 ## Primary journey
 
-Upload UTF-8 text (or a supplied sample) → choose general/children, age range, painting style and episode duration → select local/API models → analyze the complete source → inspect and freeze the series bible → generate and approve character/location references → plan the complete episode sequence → select first 1, first 5, custom episode numbers or all → direct scenes then shots → inspect and approve the production plan → render clips serially → assemble episode video → human viewing review.
+Upload UTF-8 text (or a supplied sample) → choose general/children, age range, painting style and episode duration → select local/API models → analyze the complete source → inspect and freeze the series bible → generate and approve character/location references → plan the complete episode sequence → select first 1, first 5, custom episode numbers or all → direct scenes then shots → write scene-scoped narration and dialogue → inspect and approve the production plan → preview the measured soundtrack → render clips serially → assemble episode video → human viewing review.
 
 The UI has Create, Director Plan, Production, Watch and Evaluate. Model settings are a dialog. Empty, busy, interrupted, failed and review-required states are visible and recoverable.
 
@@ -65,8 +65,16 @@ flowchart LR
   D --> H[Shot coverage]
   H --> C[Hard gates + source critic]
   C --> P[User plan approval]
-  P --> G[Image and motion adapters]
+  P --> T[Record speech + validate actual timing]
+  T --> G[Image and motion adapters]
   G --> F[FFmpeg assembly]
   F --> V[Technical checks + viewing review]
   C -->|bounded repair| D
 ```
+
+
+## Local resource admission and audio production
+
+See [IMPROVEMENTS.md](IMPROVEMENTS.md) for the October 2026 incident and verification. A machine-wide Studio inference lease prevents its local image/video/speech/planner work from overlapping. Admission accounts for free RAM and disk, with bounded waiting for recently unloaded weights. MPS/MLX allocations are capped and the diffusion worker is monitored for memory, disk and swap growth. Local Ollama contexts are explicit; models unload after every request. This limits preventable exhaustion and does not purport to fix macOS kernel defects.
+
+Audio has its own structured scene-scoped director and source critic. Narration and character cues inherit canonical speaker IDs and may span consecutive shots within one scene. Code rejects overlap, missing narration, invalid speakers, scene crossings and unreasonably wordy windows. Production synthesizes and measures all cues before any new frame or motion call. Utterances are never automatically accelerated or cut. The mixed episode soundtrack and VTT use measured timing; TTS recordings are separately checkpointed with hashes and a stable voice cast. Soundtrack-only preview is an explicit job. Source/plan changes require renewed approval and a new take when recordings or clips must be preserved.

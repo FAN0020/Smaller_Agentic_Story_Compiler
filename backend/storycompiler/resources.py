@@ -5,6 +5,7 @@ All quantities are GiB. Never disable the framework's allocator limits.
 """
 
 import shutil
+import time
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -15,6 +16,8 @@ from filelock import FileLock, Timeout
 GIB = 1024**3
 RESERVE = 3
 WORKING_SETS = {
+    "hexgrad/Kokoro-82M": 1,
+    "mlx-community/flux2-klein-4b-4bit": 5.8,
     "black-forest-labs/FLUX.2-klein-4B": 20,
     "stabilityai/sd-turbo": 4,
     "Lightricks/LTX-Video-0.9.1": 12,
@@ -58,7 +61,7 @@ def check_capacity(model, state):
         )
     if state.available < required + RESERVE:
         raise ResourceError(
-            f"Local generation needs {required + RESERVE:.0f} GiB available memory including system headroom; "
+            f"Local generation needs {required + RESERVE:.1f} GiB available memory including system headroom; "
             f"{state.available:.1f} GiB available. Close memory-heavy apps or choose a smaller model."
         )
     return required
@@ -92,3 +95,15 @@ def runtime_violation(initial, current, rss, limit):
     if rss > limit:
         return f"worker memory exceeded its {limit:.1f} GiB limit"
     return None
+
+
+def wait_for_headroom(required, initial, refresh, cancelled=lambda: False, timeout=30):
+    """Allow recently unloaded models to release memory before refusing admission."""
+    state = initial
+    deadline = time.monotonic() + timeout
+    while state.available < required and state.total >= required and state.disk_free >= 10:
+        if cancelled() or time.monotonic() >= deadline:
+            break
+        time.sleep(0.5)
+        state = refresh()
+    return state

@@ -258,22 +258,56 @@ def test_shot_agent_sees_only_assigned_source_passages_and_visual_canon():
     assert "golden" in str(result) and "The lion was asleep." in str(result)
 
 
-def test_audio_script_is_complete_and_fits_each_generation_unit():
-    from storycompiler import planning
+def test_audio_script_preserves_complete_sentences_across_generation_units():
+    from storycompiler.planning import apply_audio_script
 
-    assert hasattr(planning, "apply_audio_script")
     shots = [shot_payload() | {"id": "a"}, shot_payload() | {"id": "b"}]
-    planning.apply_audio_script(
-        shots, [{"shot_id": "a", "text": "The lion slept peacefully."}, {"shot_id": "b", "text": ""}]
+    apply_audio_script(
+        shots,
+        [
+            {
+                "shot_id": "a",
+                "kind": "narration",
+                "speaker": "narrator",
+                "end_shot_id": "b",
+                "text": "The lion slept peacefully while the mouse wandered through the forest.",
+            }
+        ],
+        {"lion", "mouse"},
     )
-    assert shots[0]["narration"] == "The lion slept peacefully."
-    with pytest.raises(ValueError, match="every shot"):
-        planning.apply_audio_script(shots, [{"shot_id": "a", "text": ""}])
-    with pytest.raises(ValueError, match="eight"):
-        planning.apply_audio_script(
-            shots,
-            [
-                {"shot_id": "a", "text": "one two three four five six seven eight nine"},
-                {"shot_id": "b", "text": ""},
-            ],
+    assert len(shots[0]["speech"][0]["text"].split()) > 8
+    assert shots[1]["speech"] == []
+
+
+def test_scene_audio_contract_constrains_model_to_real_shots_and_speakers():
+    from storycompiler.contracts import scene_audio_schema
+
+    schema = scene_audio_schema(["s1", "s2"], ["lion", "mouse"])
+    with pytest.raises(ValueError):
+        schema.model_validate(
+            {
+                "lines": [
+                    {
+                        "kind": "dialogue",
+                        "speaker": "invented",
+                        "shot_id": "s1",
+                        "end_shot_id": "s2",
+                        "text": "Hello",
+                    }
+                ]
+            }
+        )
+    with pytest.raises(ValueError):
+        schema.model_validate(
+            {
+                "lines": [
+                    {
+                        "kind": "narration",
+                        "speaker": "narrator",
+                        "shot_id": "s1",
+                        "end_shot_id": "other-scene",
+                        "text": "Hello",
+                    }
+                ]
+            }
         )

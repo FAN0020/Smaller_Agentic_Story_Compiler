@@ -118,6 +118,9 @@ def test_failed_local_generation_does_not_publish_partial_artifact(tmp_path, mon
         def poll(self):
             return self.returncode
 
+    from storycompiler.resources import Snapshot
+
+    monkeypatch.setattr("storycompiler.generation.snapshot", lambda _: Snapshot(24, 12, 40, 0))
     monkeypatch.setattr("storycompiler.generation.subprocess.Popen", FailedProcess)
     with pytest.raises(ProviderError):
         LocalGenerator(tmp_path, lambda: False).image("A tree", output, 42, model="stabilityai/sd-turbo")
@@ -142,7 +145,7 @@ def test_local_reference_generation_uses_native_multi_image_inputs(tmp_path, mon
 
 
 @pytest.mark.parametrize("stage,thinking", [("scene-director", True), ("narrative-critic", False)])
-def test_local_reasoning_is_an_explicit_per_job_model_option(tmp_path, stage, thinking):
+def test_local_reasoning_is_an_explicit_per_job_model_option(tmp_path, stage, thinking, monkeypatch):
     from storycompiler.contracts import CriticReport
     from storycompiler.providers import JsonLLM
 
@@ -159,6 +162,28 @@ def test_local_reasoning_is_an_explicit_per_job_model_option(tmp_path, stage, th
             200, json={"message": {"content": '{"findings":[],"strengths":[],"summary":"Checked"}'}}
         )
 
+    monkeypatch.setattr(JsonLLM, "_admit_local", lambda _: None)
     llm = JsonLLM(store, client=httpx.Client(transport=httpx.MockTransport(handler)))
+    llm.ollama_capabilities = {"completion", "thinking"}
     assert llm.generate(stage, {}, CriticReport).findings == []
     llm.close()
+
+
+def test_local_planner_rejects_large_model_before_loading_it(tmp_path, monkeypatch):
+    from storycompiler.contracts import CriticReport
+    from storycompiler.providers import JsonLLM
+    from storycompiler.resources import ResourceError, Snapshot
+
+    store = SettingsStore(tmp_path)
+    requests = []
+
+    def handler(request):
+        requests.append(request.url.path)
+        assert request.url.path == "/api/tags"
+        return httpx.Response(200, json={"models": [{"name": "qwen3.5:4b", "size": 20 * 1024**3}]})
+
+    monkeypatch.setattr("storycompiler.providers.snapshot", lambda _: Snapshot(24, 12, 40, 0))
+    llm = JsonLLM(store, client=httpx.Client(transport=httpx.MockTransport(handler)))
+    with pytest.raises(ResourceError, match="available"):
+        llm.generate("narrative-critic", {}, CriticReport)
+    assert requests == ["/api/tags"]

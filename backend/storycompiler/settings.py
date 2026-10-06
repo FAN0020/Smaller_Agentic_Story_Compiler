@@ -13,6 +13,7 @@ from pydantic import Field, field_validator
 from .domain import Contract
 
 LOCAL_IMAGE_MODELS = {
+    "mlx-community/flux2-klein-4b-4bit": "flux2-klein-4b-mlx",
     "black-forest-labs/FLUX.2-klein-4B": "flux2-klein-4b",
     "stabilityai/sd-turbo": "sd-turbo",
 }
@@ -22,13 +23,15 @@ class ModelSettings(Contract):
     llm_provider: Literal["ollama", "openai", "compatible"] = "ollama"
     llm_model: str = "qwen3.5:4b"
     llm_reasoning: bool = False
+    llm_context_tokens: int = Field(default=16384, ge=4096, le=65536)
     llm_endpoint: str = "http://127.0.0.1:11434"
     image_provider: Literal["local", "openai"] = "local"
-    image_model: str = "black-forest-labs/FLUX.2-klein-4B"
+    image_model: str = "mlx-community/flux2-klein-4b-4bit"
     video_provider: Literal["local", "openai", "animatic"] = "local"
     video_model: str = "Lightricks/LTX-Video-0.9.1"
-    voice_provider: Literal["system", "openai", "none"] = "system"
-    voice: str = "Samantha"
+    voice_provider: Literal["kokoro", "system", "openai", "none"] = "kokoro"
+    voice: str = "af_heart"
+    character_voices: dict[str, str] = Field(default_factory=dict)
     max_generation_calls: int = Field(default=120, ge=1, le=10000)
     local_steps: int = Field(default=20, ge=8, le=50)
     seed: int = Field(default=42, ge=0, le=2147483647)

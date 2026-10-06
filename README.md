@@ -70,3 +70,20 @@ npm --prefix web run dev
 ## Provider references
 
 Implementation checked against official [Ollama structured outputs](https://docs.ollama.com/capabilities/structured-outputs), [FLUX.2 Klein model card](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B), [SD-Turbo model card](https://huggingface.co/stabilityai/sd-turbo), [Diffusers LTX documentation](https://huggingface.co/docs/diffusers/api/pipelines/ltx_video), and [OpenAI video documentation](https://developers.openai.com/api/docs/guides/video-generation), accessed October 6–7, 2026. Provider availability, limits and account permissions can change.
+
+### Compact local models and natural speech
+
+On Apple Silicon, select **FLUX.2 Klein · 4-bit Apple Silicon** for character/location references and native multiple-reference scene images. Full-precision FLUX now requires at least 32 GB RAM. Install the compact image and neural voice runtimes with:
+
+```sh
+.venv/bin/python scripts/setup_models.py mlx-image
+uv sync --extra dev --extra local --extra speech
+.venv/bin/python scripts/setup_models.py speech
+ollama pull qwen3:8b
+```
+
+Qwen3 8B is an additional planner option, not a proven quality ranking. Qwen3.5 4B/9B and installed Gemma models remain selectable. Larger models and longer contexts require more free memory; the studio checks capacity before loading them. Each Ollama request releases its model on completion. Image/video jobs stop safely if machine headroom becomes scarce. Close memory-heavy apps, use a smaller model/context, then resume; completed artifacts are preserved.
+
+Choose **Kokoro neural voices** for free English narration and character dialogue. Pick a narrator and optionally cast each character in Model settings. On an existing directed plan, **Write narration & dialogue** creates a fresh soundtrack script and requires renewed plan approval. Then **Preview soundtrack** records and measures the voices before animation. Listen for pronunciation, pacing and character fit. A complete sentence can span several cuts within a scene; the application never truncates speech or automatically speeds it up. If a line is too long, edit its text or its ending shot and create a new take. Older takes keep their original audio.
+
+Kokoro is CPU-based and supports voice and pace selection; arbitrary emotional acting and lip synchronization are not implemented. Its six exposed presets are English. Local video remains LTX-Video 0.9.1; adding the compact image/speech paths does not establish a new video-model quality benchmark. See [the improvement evidence](docs/implementation/IMPROVEMENTS.md) for measured results and limitations.

@@ -4,6 +4,7 @@ import time
 
 from .domain import CreativeBrief, fingerprint
 from .planning import Planner
+from .speech import compile_cues
 from .validation import validate_scenes, validate_shots, validate_timeline
 
 
@@ -42,6 +43,8 @@ def revise_plan(repo, p, number, revision):
             errors.append("Shot characters must belong to their scene")
     if expected_order != [s["id"] for s in shots]:
         errors.append("Shots must be ordered under their scenes")
+    if any(s.get("speech") for s in shots):
+        compile_cues(shots, characters)
     if errors:
         raise ValueError("; ".join(errors[:5]))
     plan = p["plans"].setdefault(str(number), {})

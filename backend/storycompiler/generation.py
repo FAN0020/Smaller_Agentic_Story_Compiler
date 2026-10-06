@@ -13,7 +13,17 @@ import psutil
 from PIL import Image, ImageOps
 
 from .providers import ProviderError
-from .resources import GIB, ResourceError, check_capacity, inference_lease, runtime_violation, snapshot
+from .resources import (
+    GIB,
+    RESERVE,
+    WORKING_SETS,
+    ResourceError,
+    check_capacity,
+    inference_lease,
+    runtime_violation,
+    snapshot,
+    wait_for_headroom,
+)
 from .settings import LOCAL_IMAGE_MODELS
 
 
@@ -44,10 +54,17 @@ class LocalGenerator:
         model_id = options.get("model_id", "Lightricks/LTX-Video-0.9.1")
         model = LOCAL_IMAGE_MODELS[options["model_id"]] if kind == "image" else "ltx-video"
         if not (self.root / "models" / model / "READY").exists():
+            installer = {"flux2-klein-4b-mlx": "mlx-image", "sd-turbo": "fast-image"}.get(model, kind)
             raise ValueError(
-                f"Local {kind} model is not installed. Run .venv/bin/python scripts/setup_models.py {kind}"
+                f"Local {kind} model is not installed. Run .venv/bin/python scripts/setup_models.py {installer}"
             )
         initial = snapshot(self.root)
+        if model_id != "black-forest-labs/FLUX.2-klein-4B" or initial.total >= 31:
+            initial = wait_for_headroom(
+                WORKING_SETS[model_id] + RESERVE, initial, lambda: snapshot(self.root), self.cancelled
+            )
+        if self.cancelled():
+            raise Cancelled("Stopped while waiting for local memory")
         budget = check_capacity(model_id, initial)
         output = Path(output).resolve()
         partial = partial_path(output)
@@ -71,12 +88,22 @@ class LocalGenerator:
             **os.environ,
             "PYTORCH_ENABLE_MPS_FALLBACK": "1",
             "TOKENIZERS_PARALLELISM": "false",
+            "HF_HUB_OFFLINE": "1",
+            "TRANSFORMERS_OFFLINE": "1",
             "PYTORCH_MPS_HIGH_WATERMARK_RATIO": "1.0",
             "PYTORCH_MPS_LOW_WATERMARK_RATIO": "0.8",
         }
+        command = [sys.executable, "-m", "storycompiler.local_worker", str(request)]
+        if model_id == "mlx-community/flux2-klein-4b-4bit":
+            runtime = self.root / "runtimes/mflux/bin/python"
+            if not runtime.exists():
+                raise ValueError(
+                    "Install the Apple MLX runtime: .venv/bin/python scripts/setup_models.py mlx-image"
+                )
+            command = [str(runtime), str(Path(__file__).with_name("mlx_worker.py")), str(request)]
         with log.open("w") as stream:
             proc = subprocess.Popen(
-                [sys.executable, "-m", "storycompiler.local_worker", str(request)],
+                command,
                 stdout=stream,
                 stderr=stream,
                 env=env,
@@ -234,11 +261,18 @@ class OpenAIGenerator:
             time.sleep(5)
         raise ProviderError("Video is still processing. Resume to poll the saved provider job.")
 
-    def speech(self, text, output, voice="alloy"):
+    def speech(self, text, output, voice="alloy", delivery="Natural, conversational storytelling"):
+
         response = self.request(
             "POST",
             "/audio/speech",
-            json={"model": "gpt-4o-mini-tts", "input": text, "voice": voice, "response_format": "wav"},
+            json={
+                "model": "gpt-4o-mini-tts",
+                "input": text,
+                "voice": voice,
+                "instructions": delivery,
+                "response_format": "wav",
+            },
         )
         publish_bytes(output, response.content)
 

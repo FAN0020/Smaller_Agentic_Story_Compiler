@@ -8,6 +8,7 @@ Run outside active rendering: conversion and inference both need memory.
 import argparse
 import json
 import os
+import platform
 import shutil
 from pathlib import Path
 
@@ -78,8 +79,8 @@ def install_video(root):
         if not name.endswith(".safetensors"):
             hf_hub_download(repo, name, revision=VIDEO_REVISION, local_dir=target)
             continue
-        if shutil.disk_usage(root).free < 8 * 1024**3:
-            raise RuntimeError("Need at least 8 GiB free for the next shard and conversion")
+        if shutil.disk_usage(root).free < 18 * 1024**3:
+            raise RuntimeError("Need at least 18 GiB free for shard conversion and system headroom")
         print("Downloading and converting", name, flush=True)
         downloaded = Path(hf_hub_download(repo, name, revision=VIDEO_REVISION, local_dir=root / "downloads"))
         tensors = load_file(downloaded)
@@ -100,7 +101,9 @@ def install_video(root):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("kind", choices=["image", "fast-image", "video", "all", "status"])
+    parser.add_argument(
+        "kind", choices=["image", "fast-image", "video", "mlx-image", "speech", "all", "status"]
+    )
     parser.add_argument(
         "--root", type=Path, default=Path(os.environ.get("STORY_STUDIO_HOME", ".studio")) / "models"
     )
@@ -111,6 +114,8 @@ if __name__ == "__main__":
             json.dumps(
                 {
                     "image": (args.root / "flux2-klein-4b/READY").exists(),
+                    "mlx_image": (args.root / "flux2-klein-4b-mlx/READY").exists(),
+                    "speech": (args.root / "kokoro/READY").exists(),
                     "fast_image": (args.root / "sd-turbo/READY").exists(),
                     "video": (args.root / "ltx-video/READY").exists(),
                     "free_gib": round(shutil.disk_usage(args.root).free / 1024**3, 1),
@@ -120,7 +125,15 @@ if __name__ == "__main__":
     else:
         if args.kind == "fast-image":
             install_fast_image(args.root)
-        if args.kind in ("image", "all"):
+        if args.kind == "mlx-image" or (args.kind == "all" and platform.system() == "Darwin"):
+            from install_extras import install_mlx
+
+            install_mlx(args.root)
+        if args.kind == "speech" or args.kind == "all":
+            from install_extras import install_speech
+
+            install_speech(args.root)
+        if args.kind == "image" or (args.kind == "all" and platform.system() != "Darwin"):
             install_image(args.root)
         if args.kind in ("video", "all"):
             install_video(args.root)

@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, create_model, model_validator
 
 from .domain import Contract
 
@@ -182,6 +182,15 @@ class Sound(Contract):
     silence: bool = False
 
 
+class SpeechCue(Contract):
+    kind: Literal["narration", "dialogue"]
+    speaker: str = Field(description="narrator for narration; exact bible character ID for dialogue")
+    text: str = Field(min_length=1, max_length=1800)
+    end_shot_id: str = Field(description="Last shot this complete sentence may span, within the same scene")
+    delivery: str = "natural, conversational"
+    pace: float = Field(default=1, ge=0.9, le=1.1)
+
+
 class ShotPlan(Contract):
     id: str
     scene_id: str
@@ -228,6 +237,7 @@ class ShotPlan(Contract):
     allowed_changes: list[str]
     sound: Sound
     narration: str = ""
+    speech: list[SpeechCue] = Field(default_factory=list)
     edit: str
     information_change: str = ""
     hidden_information: str = ""
@@ -255,9 +265,8 @@ class ShotDraftBatch(Contract):
     shots: list[ShotDraft] = Field(min_length=1)
 
 
-class AudioLine(Contract):
+class AudioLine(SpeechCue):
     shot_id: str
-    text: str
 
 
 class AudioScript(Contract):
@@ -276,3 +285,19 @@ class CriticReport(Contract):
     findings: list[CriticFinding]
     strengths: list[str]
     summary: str
+
+
+def scene_audio_schema(shot_ids, character_ids):
+    """Put canonical IDs into provider JSON grammar, not only natural-language prompts."""
+    line = create_model(
+        "SceneAudioLine",
+        __base__=AudioLine,
+        shot_id=(Literal[tuple(shot_ids)], ...),
+        end_shot_id=(Literal[tuple(shot_ids)], ...),
+        speaker=(Literal[("narrator", *sorted(character_ids))], ...),
+    )
+    return create_model(
+        "SceneAudioScript",
+        __base__=AudioScript,
+        lines=(list[line], Field(min_length=1, max_length=len(shot_ids))),
+    )

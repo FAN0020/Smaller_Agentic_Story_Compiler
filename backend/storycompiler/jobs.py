@@ -66,6 +66,10 @@ class JobWorker:
                 producer.references(p, options.get("only"))
             elif kind == "direct":
                 planner.direct(p, options["numbers"])
+            elif kind == "audio":
+                planner.audio(p, options["numbers"])
+            elif kind == "speech":
+                producer.render(p, options["numbers"], speech_only=True)
             elif kind == "render":
                 producer.render(p, options["numbers"])
             else:

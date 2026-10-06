@@ -3,12 +3,14 @@
 import json
 import time
 from contextlib import nullcontext
+from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
 from pydantic import ValidationError
 
 from .prompts import BASE, STAGES, VERSION
-from .resources import inference_lease
+from .resources import GIB, RESERVE, ResourceError, inference_lease, snapshot, wait_for_headroom
 
 
 class ProviderError(RuntimeError):
@@ -21,13 +23,49 @@ class JsonLLM:
         self.settings = settings.get()
         self.client = client or httpx.Client(timeout=httpx.Timeout(600, connect=15))
         self.record = record or (lambda *_: None)
+        self.ollama_capabilities = None
 
     def generate(self, stage, context, schema):
         lease = inference_lease() if self.settings.llm_provider == "ollama" else nullcontext()
         with lease:
             return self._generate(stage, context, schema)
 
+    def _admit_local(self):
+        settings = self.settings
+        if urlparse(settings.llm_endpoint).hostname not in ("localhost", "127.0.0.1", "::1"):
+            return
+        try:
+            response = self.client.get(settings.llm_endpoint + "/api/tags")
+            response.raise_for_status()
+            model = next(m for m in response.json()["models"] if m["name"] == settings.llm_model)
+            required = model["size"] / GIB * 1.2 + 2 * settings.llm_context_tokens / 16384
+        except httpx.HTTPStatusError as e:
+            raise ProviderError(
+                f"Local model inspection returned HTTP {e.response.status_code}; check the endpoint"
+            ) from e
+        except (httpx.HTTPError, KeyError, StopIteration) as e:
+            raise ProviderError(
+                "Cannot inspect the selected local model. Check Ollama and install the exact selected model tag."
+            ) from e
+        state = wait_for_headroom(required + RESERVE, snapshot(Path.cwd()), lambda: snapshot(Path.cwd()))
+        if state.disk_free < 10 or state.available < required + RESERVE:
+            raise ResourceError(
+                f"Local planning needs about {required + RESERVE:.1f} GiB available memory; "
+                f"{state.available:.1f} GiB available. Choose a smaller model/context or close memory-heavy apps. Keep 10 GiB disk free."
+            )
+
     def _generate(self, stage, context, schema):
+        if self.settings.llm_provider == "ollama":
+            self._admit_local()
+            if self.ollama_capabilities is None:
+                response = self.client.post(
+                    self.settings.llm_endpoint + "/api/show", json={"model": self.settings.llm_model}
+                )
+                if response.is_error:
+                    raise ProviderError(f"Model capability inspection returned HTTP {response.status_code}")
+                self.ollama_capabilities = set(response.json().get("capabilities", []))
+                if "completion" not in self.ollama_capabilities:
+                    raise ProviderError("Choose a chat/completion model, not an embedding-only model")
         settings = self.settings
         thinking = settings.llm_reasoning and stage in {"episode-planner", "scene-director", "shot-director"}
         system = BASE + "\n" + STAGES[stage]
@@ -48,8 +86,14 @@ class JsonLLM:
                     "stream": False,
                     "think": thinking,
                     "keep_alive": 0,
-                    "options": {"temperature": 0.2, "num_ctx": 32768, "num_predict": 14000},
+                    "options": {
+                        "temperature": 0.2,
+                        "num_ctx": settings.llm_context_tokens,
+                        "num_predict": 8192,
+                    },
                 }
+                if "thinking" not in self.ollama_capabilities:
+                    body.pop("think")
                 headers = {}
             else:
                 provider = settings.llm_provider
@@ -105,6 +149,10 @@ class JsonLLM:
                     "model": settings.llm_model,
                     "provider": settings.llm_provider,
                     "reasoning_requested": thinking if settings.llm_provider == "ollama" else None,
+                    "context_tokens": settings.llm_context_tokens
+                    if settings.llm_provider == "ollama"
+                    else None,
+                    "prompt_tokens": data.get("prompt_eval_count"),
                     "seconds": round(time.monotonic() - start, 2),
                     "attempts": attempt + 1,
                     "tokens": data.get("eval_count", data.get("usage", {}).get("completion_tokens")),
