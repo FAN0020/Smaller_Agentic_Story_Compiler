@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Aperture,
   ArrowUpRight,
@@ -39,6 +39,7 @@ export default function App() {
     localStorage.getItem("story-project"),
   );
   const [selected, setSelected] = useState<number[]>([1]);
+  const currentId = useRef(id);
   const [modelDialog, setModelDialog] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -50,10 +51,12 @@ export default function App() {
         api<Data[]>("/projects"),
         id ? api("/projects/" + id) : Promise.resolve(null),
       ]);
+      if (currentId.current !== id) return;
       setProjects(list);
       setProject(detail);
       setConnected(true);
     } catch (e) {
+      if (currentId.current !== id) return;
       setConnected(false);
       setError((e as Error).message);
     }
@@ -77,6 +80,9 @@ export default function App() {
   useEffect(() => {
     if (id) localStorage.setItem("story-project", id);
   }, [id]);
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, [page]);
   useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(() => setNotice(""), 4000);
@@ -134,6 +140,7 @@ export default function App() {
     setError("");
     try {
       const p = await send("/projects", data);
+      currentId.current = p.id;
       setId(p.id);
       setProject(p);
       setSelected([1]);
@@ -146,7 +153,9 @@ export default function App() {
     }
   }
   function chooseProject(p: Data) {
+    currentId.current = p.id;
     setId(p.id);
+    setProject(null);
     setSelected([1]);
     setPage("Director Plan");
   }

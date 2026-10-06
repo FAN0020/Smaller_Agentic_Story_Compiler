@@ -1,5 +1,5 @@
 import { ArrowRight, Check, LoaderCircle, Sparkles } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { Data } from "./api";
 
 export function Button({
@@ -56,7 +56,7 @@ export function Empty({
         <Sparkles size={28} />
       </div>
       <h2>{title}</h2>
-      <p>{children}</p>
+      <div className="empty-copy">{children}</div>
       {action && (
         <Button onClick={action}>
           Start a story <ArrowRight size={16} />
@@ -153,6 +153,11 @@ export function EpisodePicker({
   selected: number[];
   setSelected: (n: number[]) => void;
 }) {
+  const [draft, setDraft] = useState(selected.join(", "));
+  const [editing, setEditing] = useState(false);
+  useEffect(() => {
+    if (!editing) setDraft(selected.join(", "));
+  }, [selected, editing]);
   const choices = [
     { key: "one", label: "1 episode · test", numbers: [1] },
     {
@@ -169,12 +174,22 @@ export function EpisodePicker({
   return (
     <div className="episode-picker">
       <div className="segmented">
-        {choices.map((c) => (
+        {choices.map((c, index) => (
           <button
             key={c.key}
-            onClick={() => setSelected(c.numbers)}
+            onClick={() => {
+              setEditing(false);
+              setDraft(c.numbers.join(", "));
+              setSelected(c.numbers);
+            }}
             aria-pressed={
-              JSON.stringify(selected) === JSON.stringify(c.numbers)
+              JSON.stringify(selected) === JSON.stringify(c.numbers) &&
+              !choices
+                .slice(0, index)
+                .some(
+                  (other) =>
+                    JSON.stringify(other.numbers) === JSON.stringify(selected),
+                )
             }
           >
             {c.label}
@@ -186,8 +201,11 @@ export function EpisodePicker({
         <input
           aria-label="Custom episode numbers"
           placeholder="e.g. 1, 3, 5"
-          value={selected.join(", ")}
+          value={draft}
+          onFocus={() => setEditing(true)}
+          onBlur={() => setEditing(false)}
           onChange={(e) => {
+            setDraft(e.target.value);
             const nums = e.target.value
               .split(",")
               .map((x) => Number(x.trim()))
