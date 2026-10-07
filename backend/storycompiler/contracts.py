@@ -185,6 +185,25 @@ class SceneBoundaryBatch(Contract):
     scenes: list[SceneBoundary] = Field(min_length=1)
 
 
+def compact_scene_schema(bible, event_count, clip_count):
+    """Constrain canonical IDs and omit fields assigned deterministically by the compiler."""
+    fields = {
+        name: (field.annotation, field)
+        for name, field in SceneBoundary.model_fields.items()
+        if name not in ("id", "episode_number", "bible_hash", "source_event_ids", "duration")
+    }
+    character_ids = tuple(c["id"] for c in bible["characters"])
+    location_ids = tuple(loc["id"] for loc in bible["locations"])
+    fields.update(
+        characters=(list[Literal[character_ids]], Field()),
+        location_id=(Literal[location_ids], Field()),
+        end_event_number=(int, Field(ge=1, le=event_count)),
+        end_clip_number=(int, Field(ge=1, le=clip_count)),
+    )
+    scene = create_model("CompactSceneBoundary", __base__=Contract, **fields)
+    return create_model("CompactSceneBatch", __base__=Contract, scenes=(list[scene], Field(min_length=1)))
+
+
 class Camera(Contract):
     size: Literal["ELS", "LS", "FULL", "MLS", "MS", "MCU", "CU", "ECU", "INSERT"]
     angle: str

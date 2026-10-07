@@ -146,6 +146,34 @@ class Repository:
             id = self._insert_job(c, project_id, kind, payload)
         return self.get_job(id)
 
+    def retry_language_job(self, id, settings):
+        """Keep the original snapshot; atomically replace a stopped planning job."""
+        with self.connect() as c:
+            c.execute("BEGIN IMMEDIATE")
+            row = c.execute("SELECT * FROM jobs WHERE id=?", (id,)).fetchone()
+            if row is None:
+                raise KeyError("Job not found")
+            job = self._job(row)
+            if job["kind"] not in ("analyze", "episodes", "direct", "audio"):
+                raise ValueError("Only language planning jobs can retry with a new language model")
+            if job["status"] not in ("failed", "interrupted", "cancelled", "review_required"):
+                raise ValueError("This job does not need retrying")
+            if c.execute(
+                "SELECT 1 FROM jobs WHERE project_id=? AND status IN ('queued','running')",
+                (job["project_id"],),
+            ).fetchone():
+                raise ValueError("This project already has an active job")
+            payload = deepcopy(job["payload"])
+            payload["retry_of_job"] = id
+            previous = payload.get("model_settings", settings)
+            payload["model_settings"] = previous | {k: v for k, v in settings.items() if k.startswith("llm_")}
+            new_id = self._insert_job(c, job["project_id"], job["kind"], payload)
+            c.execute(
+                "UPDATE jobs SET status='superseded',message=?,updated=? WHERE id=?",
+                ("Retried with selected language settings", time.time(), id),
+            )
+        return self.get_job(new_id)
+
     @staticmethod
     def _insert_job(c, project_id, kind, payload):
         now = time.time()

@@ -317,17 +317,60 @@ export default function App() {
                     </strong>
                     {recent.error && <p>{recent.error}</p>}
                   </div>
-                  <button
-                    className="button secondary small"
-                    disabled={saving}
-                    onClick={() =>
-                      void send("/jobs/" + recent.id + "/resume", {})
-                        .then(refresh)
-                        .catch((e) => setError(e.message))
-                    }
-                  >
-                    Resume saved work
-                  </button>
+                  <div className="recovery-actions">
+                    {["analyze", "episodes", "direct", "audio"].includes(
+                      recent.kind,
+                    ) && (
+                      <>
+                        <p className="caption">
+                          Original model:{" "}
+                          {recent.payload?.model_settings?.llm_model ||
+                            "legacy settings"}
+                          . Selected: {settings.llm_model} (
+                          {settings.llm_provider}).
+                        </p>
+                        {recent.status === "review_required" && (
+                          <p className="caption">
+                            The plan failed story or structure checks. Choose a
+                            more capable language model in Models & production,
+                            or enable compact planning recovery to retry with
+                            this model.
+                          </p>
+                        )}
+                        <button
+                          className="button secondary small"
+                          onClick={() => setModelDialog(true)}
+                        >
+                          <Settings2 size={14} /> Models & production
+                        </button>
+                        <button
+                          className="button small"
+                          disabled={saving || !settings.llm_model}
+                          onClick={() =>
+                            void run(() =>
+                              send(
+                                "/jobs/" + recent.id + "/retry-with-settings",
+                                {},
+                              ),
+                            ).catch(() => {})
+                          }
+                        >
+                          Retry with selected language model
+                        </button>
+                      </>
+                    )}
+                    <button
+                      className="button secondary small"
+                      disabled={saving}
+                      onClick={() =>
+                        void run(() =>
+                          send("/jobs/" + recent.id + "/resume", {}),
+                        ).catch(() => {})
+                      }
+                    >
+                      Resume saved work · original settings
+                    </button>
+                  </div>
                 </div>
               )}
             <div hidden={page !== "Create"}>

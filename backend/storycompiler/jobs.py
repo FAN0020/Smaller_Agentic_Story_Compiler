@@ -3,6 +3,7 @@
 import threading
 
 from .generation import Cancelled
+from .language_models import quality_guidance
 from .planning import Planner, ReviewRequired
 from .production import Producer
 from .providers import JsonLLM
@@ -78,7 +79,12 @@ class JobWorker:
         except Cancelled as e:
             self.repo.update_job(job["id"], status="cancelled", message=str(e))
         except ReviewRequired as e:
-            self.repo.update_job(job["id"], status="review_required", error=str(e), message="Review needed")
+            self.repo.update_job(
+                job["id"],
+                status="review_required",
+                error=str(e) + " " + quality_guidance(frozen_settings.get()),
+                message="Review needed",
+            )
         except Exception as e:  # noqa: BLE001 - worker boundary must preserve failed-job state
             self.repo.update_job(
                 job["id"],

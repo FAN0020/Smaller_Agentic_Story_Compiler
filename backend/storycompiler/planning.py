@@ -12,6 +12,7 @@ from .contracts import (
     SceneBoundaryBatch,
     ShotDraftBatch,
     ShotPlan,
+    compact_scene_schema,
     scene_audio_schema,
 )
 from .domain import STYLE_BY_ID, CreativeBrief, chunk_source, fingerprint
@@ -59,19 +60,101 @@ def shot_context(context, scene):
     }
 
 
+def compact_planning_context(context):
+    """Remove repeated source passages and metadata, never events or their evidence quotes."""
+    event_key = "source_events" if "source_events" in context else "events"
+    events = context[event_key]
+    bible = context["bible"]
+    compact_bible = {
+        k: v
+        for k, v in bible.items()
+        if k
+        in (
+            "title",
+            "logline",
+            "genre",
+            "themes",
+            "style_instruction",
+            "policy",
+            "brief",
+            "directing_principles",
+            "adaptation_notes",
+            "visual_motifs",
+            "story_setting",
+        )
+    }
+    for kind in ("characters", "locations"):
+        compact_bible[kind] = [
+            {k: v for k, v in item.items() if k in ("id", "name", "source_facts", "geography")}
+            for item in bible[kind]
+        ]
+    return {
+        k: v
+        for k, v in context.items()
+        if k
+        not in (
+            "bible",
+            event_key,
+            "original_source_excerpts",
+            "previous_candidate",
+            "bible_hash",
+        )
+    } | {
+        "bible": compact_bible,
+        event_key: [
+            {
+                k: v
+                for k, v in event.items()
+                if k
+                in (
+                    "id",
+                    "event_number",
+                    "summary",
+                    "quote",
+                    "characters",
+                    "location",
+                )
+            }
+            for event in events
+        ],
+        "coverage_requirement": {
+            "event_count": len(events),
+            "final_end_event_number": len(events),
+            "final_end_clip_number": context.get("total_clips"),
+            "instruction": "Write this story using ALL ordered events and the exact canonical character/location IDs. "
+            "Do not invent a generic substitute. End boundaries must equal the supplied totals. "
+            "IDs, duration and source_event_ids are assigned by the compiler.",
+        },
+        "recovery_mode": "compact",
+    }
+
+
 def source_excerpts(p, events):
     ids = {e["source_id"] for e in events}
     return [c.model_dump() for c in chunk_source(p["source"]) if c.id in ids]
 
 
-def partition_events(boundaries, events):
+def partition_events(boundaries, events, unit="event"):
     if not boundaries or boundaries[-1] != len(events):
-        raise ValueError(f"The last boundary must end at event number {len(events)}")
+        actual = boundaries[-1] if boundaries else "none"
+        reason = (
+            "left part of the story uncovered" if unit == "event" else "did not fill the episode duration"
+        )
+        if boundaries and boundaries[-1] > len(events):
+            reason = (
+                "extended beyond the supplied story" if unit == "event" else "exceeded the episode duration"
+            )
+        raise ValueError(
+            f"The model {reason}: its final {unit} boundary was {actual}, but must be {len(events)}. "
+            f"Regenerate the complete plan covering every supplied {unit} in order."
+        )
     cursor = 0
     parts = []
     for end in boundaries:
         if end <= cursor or end > len(events):
-            raise ValueError("Boundary values must strictly increase through all supplied events")
+            raise ValueError(
+                f"The model returned overlapping or out-of-order {unit} boundaries. Each boundary must increase through all supplied {unit}s."
+            )
         parts.append([e["id"] for e in events[cursor:end]])
         cursor = end
     return parts
@@ -82,6 +165,7 @@ def compile_scenes(candidates, events, target_seconds, episode_number, bible_has
     clips = partition_events(
         [s["end_clip_number"] for s in candidates],
         [{"id": i} for i in range(target_seconds // 4)],
+        unit="clip",
     )
     return [
         {k: v for k, v in scene.items() if k not in ("end_event_number", "end_clip_number")}
@@ -246,6 +330,9 @@ class Planner:
         self.repo.save_project(p)
         self.progress(progress, message)
 
+    def compact_recovery_enabled(self):
+        return getattr(getattr(self.llm, "settings", None), "llm_compact_recovery", True)
+
     def semantic_gate(self, context, layer, candidate):
         report = self.llm.generate(
             "narrative-critic", {**context, "layer": layer, "candidate": candidate}, CriticReport
@@ -408,8 +495,13 @@ class Planner:
             }
             errors = []
             for attempt in range(3):
+                attempt_context = (
+                    compact_planning_context(context)
+                    if errors and self.compact_recovery_enabled()
+                    else context
+                )
                 batch = self.llm.generate(
-                    "episode-planner", {**context, "repair_feedback": errors}, BoundaryBatch
+                    "episode-planner", {**attempt_context, "repair_feedback": errors}, BoundaryBatch
                 )
                 p.setdefault("episode_attempts", []).append(batch.model_dump())
                 self.repo.save_project(p)
@@ -446,7 +538,7 @@ class Planner:
                     ):
                         errors.append("Open loops must reference actual source events")
                 if not errors:
-                    review, errors = self.semantic_gate(context, "episode boundaries", eps)
+                    review, errors = self.semantic_gate(attempt_context, "episode boundaries", eps)
                     p["audit"].append({"action": "episode_semantic_review", "review": review})
                 if not errors:
                     break
@@ -500,17 +592,32 @@ class Planner:
                 plan["scenes"] = []
                 plan["shots"] = []
             if not plan["scenes"]:
-                errors = scene_errors
+                errors = scene_errors or (plan.get("scene_attempts") or [{}])[-1].get("errors", [])
                 for attempt in range(3):
                     self.progress(index / len(numbers), f"Designing Episode {number} scenes…")
+                    compact = bool(errors) and self.compact_recovery_enabled()
+                    attempt_context = compact_planning_context(context) if compact else context
+                    schema = (
+                        compact_scene_schema(bible, len(events), brief.target_seconds // 4)
+                        if compact
+                        else SceneBoundaryBatch
+                    )
                     candidate = self.llm.generate(
                         "scene-director",
                         {
-                            **context,
+                            **attempt_context,
                             "repair_feedback": errors,
-                            "previous_candidate": plan.get("scene_attempts", [{}])[-1].get("candidate"),
+                            **(
+                                {}
+                                if compact
+                                else {
+                                    "previous_candidate": (plan.get("scene_attempts") or [{}])[-1].get(
+                                        "candidate"
+                                    )
+                                }
+                            ),
                         },
-                        SceneBoundaryBatch,
+                        schema,
                     )
                     try:
                         scenes = compile_scenes(
@@ -523,7 +630,11 @@ class Planner:
                     except ValueError as e:
                         errors = [str(e)]
                         plan.setdefault("scene_attempts", []).append(
-                            {"candidate": candidate.model_dump(), "errors": errors}
+                            {
+                                "candidate": candidate.model_dump(),
+                                "errors": errors,
+                                "recovery_mode": "compact" if compact else "full",
+                            }
                         )
                         p["plans"][key] = plan
                         self.repo.save_project(p)
@@ -536,10 +647,16 @@ class Planner:
                         {l["id"] for l in bible["locations"]},
                     )
                     if not errors:
-                        review, errors = self.semantic_gate(context, "scene intent and continuity", scenes)
+                        review, errors = self.semantic_gate(
+                            attempt_context, "scene intent and continuity", scenes
+                        )
                         plan.setdefault("scene_reviews", []).append(review)
                     plan.setdefault("scene_attempts", []).append(
-                        {"candidate": candidate.model_dump(), "errors": errors}
+                        {
+                            "candidate": candidate.model_dump(),
+                            "errors": errors,
+                            "recovery_mode": "compact" if compact else "full",
+                        }
                     )
                     p["plans"][key] = plan
                     self.repo.save_project(p)

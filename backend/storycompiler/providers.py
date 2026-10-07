@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 import httpx
 from pydantic import ValidationError
 
+from .language_models import LOCAL_CHAT_PROVIDERS, endpoint, local_endpoint, needs_key, quality_guidance
 from .prompts import BASE, STAGES, VERSION
 from .resources import GIB, RESERVE, ResourceError, inference_lease, snapshot, wait_for_headroom
 
@@ -26,13 +27,24 @@ class JsonLLM:
         self.ollama_capabilities = None
 
     def generate(self, stage, context, schema):
-        lease = inference_lease() if self.settings.llm_provider == "ollama" else nullcontext()
+        lease = (
+            inference_lease()
+            if self.settings.llm_provider in LOCAL_CHAT_PROVIDERS and local_endpoint(self.settings)
+            else nullcontext()
+        )
         with lease:
             return self._generate(stage, context, schema)
 
     def _admit_local(self):
         settings = self.settings
         if urlparse(settings.llm_endpoint).hostname not in ("localhost", "127.0.0.1", "::1"):
+            return
+        if settings.llm_provider != "ollama":
+            state = wait_for_headroom(RESERVE, snapshot(Path.cwd()), lambda: snapshot(Path.cwd()))
+            if state.available < RESERVE or state.disk_free < 10:
+                raise ResourceError(
+                    "Close memory-heavy apps before local planning. Configure model size and context in your language server and keep 10 GiB disk free."
+                )
             return
         try:
             response = self.client.get(settings.llm_endpoint + "/api/tags")
@@ -43,7 +55,7 @@ class JsonLLM:
             raise ProviderError(
                 f"Local model inspection returned HTTP {e.response.status_code}; check the endpoint"
             ) from e
-        except (httpx.HTTPError, KeyError, StopIteration) as e:
+        except (httpx.HTTPError, ValueError, KeyError, TypeError, StopIteration) as e:
             raise ProviderError(
                 "Cannot inspect the selected local model. Check Ollama and install the exact selected model tag."
             ) from e
@@ -55,17 +67,25 @@ class JsonLLM:
             )
 
     def _generate(self, stage, context, schema):
-        if self.settings.llm_provider == "ollama":
+        if not self.settings.llm_model.strip():
+            raise ProviderError("Choose a language model in Models & production before planning")
+        if self.settings.llm_provider in LOCAL_CHAT_PROVIDERS:
             self._admit_local()
-            if self.ollama_capabilities is None:
+        if self.settings.llm_provider == "ollama" and self.ollama_capabilities is None:
+            try:
                 response = self.client.post(
                     self.settings.llm_endpoint + "/api/show", json={"model": self.settings.llm_model}
                 )
-                if response.is_error:
-                    raise ProviderError(f"Model capability inspection returned HTTP {response.status_code}")
+                response.raise_for_status()
                 self.ollama_capabilities = set(response.json().get("capabilities", []))
-                if "completion" not in self.ollama_capabilities:
-                    raise ProviderError("Choose a chat/completion model, not an embedding-only model")
+            except (httpx.HTTPError, ValueError, TypeError) as exc:
+                raise ProviderError(
+                    "Cannot read the selected Ollama model's capabilities. Start Ollama, install the exact model tag, and check Models & production."
+                ) from exc
+            if "completion" not in self.ollama_capabilities:
+                raise ProviderError(
+                    "Choose a chat/completion model in Models & production; this model is embedding-only"
+                )
         settings = self.settings
         thinking = settings.llm_reasoning and stage in {"episode-planner", "scene-director", "shot-director"}
         system = BASE + "\n" + STAGES[stage]
@@ -98,28 +118,59 @@ class JsonLLM:
             else:
                 provider = settings.llm_provider
                 key = self.store.secret(provider)
-                if not key:
-                    raise ProviderError("Add an API key in Model settings before planning")
-                base = "https://api.openai.com/v1" if provider == "openai" else settings.llm_endpoint
+                if not key and needs_key(settings):
+                    raise ProviderError(
+                        "Save the selected provider’s API key in Models & production before planning"
+                    )
+                base = endpoint(settings)
                 url = base.rstrip("/") + "/chat/completions"
                 body = {
                     "model": settings.llm_model,
                     "messages": messages,
                     "response_format": {"type": "json_object"},
                 }
-                headers = {"Authorization": "Bearer " + key}
+                if provider == "lmstudio":
+                    body["response_format"] = {
+                        "type": "json_schema",
+                        "json_schema": {"name": schema.__name__, "schema": contract},
+                    }
+                if provider == "llamacpp":
+                    body["response_format"] = {"type": "json_schema", "schema": contract}
+                if provider == "openrouter":
+                    if not settings.llm_model.endswith(":free"):
+                        raise ProviderError("Choose an explicit free model in Models & production")
+                    body["provider"] = {
+                        "require_parameters": True,
+                        "allow_fallbacks": False,
+                        "max_price": {"prompt": 0, "completion": 0, "request": 0},
+                    }
+                headers = {"Authorization": "Bearer " + key} if key else {}
             try:
                 response = self.client.post(url, json=body, headers=headers)
             except httpx.RequestError as e:
                 raise ProviderError(
-                    "Language model connection failed or timed out. Check Model settings."
+                    "Language model connection failed or timed out. Check the server and endpoint in Models & production."
                 ) from e
             if response.status_code in (429, 502, 503, 504) and attempt < 2:
-                time.sleep(min(10, float(response.headers.get("retry-after", "2"))))
+                try:
+                    delay = float(response.headers.get("retry-after", "2"))
+                except ValueError:
+                    delay = 2
+                time.sleep(max(0, min(10, delay)))
                 continue
             if response.is_error:
+                advice = {
+                    401: "Check the saved API key for this provider.",
+                    403: "Your account or key cannot access this model.",
+                    404: "The selected model or API endpoint was not found.",
+                    429: "The provider's quota or rate limit was reached. Wait or choose another available model.",
+                    400: "The model rejected the request format or context size. Choose a JSON-capable chat model or check the server's context limit.",
+                }.get(
+                    response.status_code,
+                    "The provider is unavailable or rejected this request. Check its service status and model availability.",
+                )
                 raise ProviderError(
-                    f"Language model returned HTTP {response.status_code}; check model, endpoint and credentials"
+                    f"Language model returned HTTP {response.status_code}. {advice} Open Models & production to change the selection."
                 )
             try:
                 data = response.json()
@@ -129,10 +180,11 @@ class JsonLLM:
                     else data["choices"][0]["message"]["content"]
                 )
                 result = schema.model_validate_json(raw)
-            except (ValueError, KeyError, IndexError, ValidationError) as e:
+            except (ValueError, KeyError, IndexError, TypeError, ValidationError) as e:
                 if attempt == 2:
                     raise ProviderError(
-                        "The model failed its structured output contract after 3 attempts"
+                        "The model returned invalid structured JSON after 3 attempts. "
+                        + quality_guidance(settings)
                     ) from e
                 messages.append(
                     {

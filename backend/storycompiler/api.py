@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
 
-import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -20,11 +19,12 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from .contracts import BibleDraft, PlanRevision
 from .domain import STYLES, Contract, CreativeBrief
 from .jobs import JobWorker
+from .language_models import LANGUAGE_PROVIDERS, LLM_MODEL_OPTIONS, discover_language_models
 from .planning import Planner
 from .production import Producer, assert_production_approved, file_hash
 from .resources import ResourceError, check_capacity, snapshot
 from .review import revise_plan
-from .settings import LOCAL_IMAGE_MODELS, SettingsStore
+from .settings import LOCAL_IMAGE_MODELS, ModelSettings, SettingsStore
 from .speech import KOKORO_VOICES
 from .storage import Repository
 from .validation import assert_references_frozen
@@ -32,39 +32,6 @@ from .video_models import LOCAL_VIDEO_MODELS
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SAMPLES = PROJECT_ROOT / "docs/stories"
-
-LLM_MODEL_OPTIONS = [
-    {
-        "id": "qwen2.5:1.5b-instruct",
-        "label": "Qwen 2.5 · 1.5B",
-        "tier": "light",
-        "description": "Lowest memory use and quickest responses; expect more repairs on complex stories.",
-    },
-    {
-        "id": "gemma3:4b",
-        "label": "Gemma 3 · 4B",
-        "tier": "light",
-        "description": "Compact local planner for straightforward adaptations.",
-    },
-    {
-        "id": "qwen3.5:4b",
-        "label": "Qwen 3.5 · 4B",
-        "tier": "balanced",
-        "description": "Balanced local default for speed, memory use and planning quality.",
-    },
-    {
-        "id": "qwen3:8b",
-        "label": "Qwen 3 · 8B",
-        "tier": "quality",
-        "description": "More planning capacity; uses more memory and takes longer.",
-    },
-    {
-        "id": "qwen3.5:9b",
-        "label": "Qwen 3.5 · 9B",
-        "tier": "quality",
-        "description": "Higher-capacity local planning for richer story and shot direction; needs more memory.",
-    },
-]
 
 
 class NewProject(Contract):
@@ -172,6 +139,7 @@ def create_app(root: Path | None = None, start_worker=True):
             "samples": samples,
             "models": {
                 "llm": LLM_MODEL_OPTIONS,
+                "language_providers": LANGUAGE_PROVIDERS,
                 "image": [
                     {
                         "id": "mlx-community/flux2-klein-4b-4bit",
@@ -246,6 +214,14 @@ def create_app(root: Path | None = None, start_worker=True):
     def put_settings(changes: dict):
         return settings.update(changes)
 
+    @app.post("/api/providers/language-models")
+    def language_models(changes: dict):
+        allowed = {"llm_provider", "llm_endpoint", "llm_model"}
+        if not set(changes) <= allowed:
+            raise ValueError("Discovery accepts only the language provider, endpoint and model")
+        configured = ModelSettings.model_validate({**settings.get().model_dump(), **changes})
+        return discover_language_models(configured, settings)
+
     @app.get("/api/providers/status")
     def provider_status():
         configured = settings.get()
@@ -292,28 +268,7 @@ def create_app(root: Path | None = None, start_worker=True):
                     "resource_warning": reason,
                 }
             )
-        models = []
-        try:
-            if configured.llm_provider == "ollama":
-                response = httpx.get(configured.llm_endpoint + "/api/tags", timeout=3)
-                response.raise_for_status()
-                capabilities = {}
-                for candidate in response.json()["models"]:
-                    info = httpx.post(
-                        configured.llm_endpoint + "/api/show", json={"model": candidate["name"]}, timeout=3
-                    )
-                    info.raise_for_status()
-                    capabilities[candidate["name"]] = info.json().get("capabilities", [])
-                models = [name for name, caps in capabilities.items() if "completion" in caps]
-                llm = {
-                    "available": configured.llm_model in models,
-                    "models": models,
-                    "capabilities": capabilities,
-                }
-            else:
-                llm = {"available": bool(settings.secret(configured.llm_provider)), "verified": False}
-        except (httpx.HTTPError, ValueError, KeyError):
-            llm = {"available": False, "models": []}
+        llm = discover_language_models(configured, settings)
         return {"local": local, "llm": llm, "credentials": settings.public()["credentials"]}
 
     @app.post("/api/projects", status_code=201)
@@ -375,7 +330,9 @@ def create_app(root: Path | None = None, start_worker=True):
                 if path.parent != directory or not path.is_file():
                     raise ValueError("A reference image is missing; restore it before creating a revision")
                 if file_hash(path) != reference["sha256"]:
-                    raise ValueError("A reference image changed on disk; restore it before creating a revision")
+                    raise ValueError(
+                        "A reference image changed on disk; restore it before creating a revision"
+                    )
             payload = {**body.model_dump(), "model_settings": settings.get().model_dump()}
             new = repo.create_reference_revision(p, payload)
             return {**new, "jobs": repo.jobs(new["id"])}
@@ -487,6 +444,11 @@ def create_app(root: Path | None = None, start_worker=True):
             idle(job["project_id"])
             repo.update_job(id, status="queued", cancel=0, error=None, message="Resuming saved work")
             return repo.get_job(id)
+
+    @app.post("/api/jobs/{id}/retry-with-settings")
+    def retry_with_settings(id: str):
+        with lock:
+            return repo.retry_language_job(id, settings.get().model_dump())
 
     @app.get("/api/artifacts/{id}/{filename}")
     def artifact(id: str, filename: str):

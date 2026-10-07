@@ -21,9 +21,10 @@ LOCAL_IMAGE_MODELS = {
 
 
 class ModelSettings(Contract):
-    llm_provider: Literal["ollama", "openai", "compatible"] = "ollama"
+    llm_provider: Literal["ollama", "lmstudio", "llamacpp", "openrouter", "openai", "compatible"] = "ollama"
     llm_model: str = "qwen3.5:4b"
     llm_reasoning: bool = False
+    llm_compact_recovery: bool = True
     llm_context_tokens: int = Field(default=16384, ge=4096, le=65536)
     llm_endpoint: str = "http://127.0.0.1:11434"
     image_provider: Literal["local", "openai"] = "local"
@@ -36,6 +37,12 @@ class ModelSettings(Contract):
     max_generation_calls: int = Field(default=120, ge=1, le=10000)
     local_steps: int = Field(default=20, ge=8, le=50)
     seed: int = Field(default=42, ge=0, le=2147483647)
+
+    @model_validator(mode="after")
+    def supported_language_model(self):
+        if self.llm_provider == "openrouter" and self.llm_model and not self.llm_model.endswith(":free"):
+            raise ValueError("OpenRouter requires an explicit :free model; refresh the free model catalog")
+        return self
 
     @model_validator(mode="after")
     def supported_local_video(self):
@@ -94,7 +101,7 @@ class SettingsStore:
             settings = ModelSettings.model_validate({**self.get().model_dump(), **changes})
             if key is not None:
                 provider = credential_provider or settings.llm_provider
-                if provider not in ("openai", "compatible"):
+                if provider not in ("openai", "compatible", "openrouter", "lmstudio", "llamacpp"):
                     raise ValueError("Select the API credential provider")
                 secrets = self._secrets()
                 secrets[provider] = key

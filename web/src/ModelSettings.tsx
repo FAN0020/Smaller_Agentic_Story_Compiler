@@ -3,6 +3,7 @@ import { Check, RefreshCw, X } from "lucide-react";
 import { api, send } from "./api";
 import type { Data } from "./api";
 import { Button, Tag } from "./components";
+import LanguageSettings from "./LanguageSettings";
 
 export default function ModelSettings({
   initial,
@@ -80,137 +81,18 @@ export default function ModelSettings({
       <div className="dialog-body">
         <p className="muted">
           Run on your machine, or connect stronger models with your own API
-          keys. Providers never change automatically.
+          keys. Providers never change automatically. Save settings, then retry
+          a stopped planning job with the selected language model.
         </p>
-        <section className="settings-section">
-          <h3>Story & direction</h3>
-          <div className="field-row">
-            <label className="field">
-              Language provider
-              <select
-                value={form.llm_provider}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  set("llm_provider", v);
-                  set(
-                    "llm_model",
-                    v === "ollama"
-                      ? "qwen3.5:4b"
-                      : v === "openai"
-                        ? "gpt-4.1-mini"
-                        : "",
-                  );
-                  set(
-                    "llm_endpoint",
-                    v === "ollama"
-                      ? "http://127.0.0.1:11434"
-                      : "https://api.openai.com/v1",
-                  );
-                }}
-              >
-                <option value="ollama">Local · Ollama</option>
-                <option value="openai">OpenAI API</option>
-                <option value="compatible">OpenAI-compatible API</option>
-              </select>
-            </label>
-            <label className="field">
-              Model
-              {form.llm_provider === "ollama" ? (
-                <select
-                  value={form.llm_model}
-                  onChange={(e) => set("llm_model", e.target.value)}
-                >
-                  {(catalog?.models?.llm || []).map((model: Data) => (
-                    <option value={model.id} key={model.id}>
-                      {model.label} · {model.tier}
-                    </option>
-                  ))}
-                  {(status?.llm?.models || [])
-                    .filter(
-                      (id: string) =>
-                        !(catalog?.models?.llm || []).some(
-                          (model: Data) => model.id === id,
-                        ),
-                    )
-                    .map((id: string) => (
-                      <option value={id} key={id}>
-                        {id} · installed
-                      </option>
-                    ))}
-                  {form.llm_model &&
-                    ![
-                      ...(catalog?.models?.llm || []).map((m: Data) => m.id),
-                      ...(status?.llm?.models || []),
-                    ].includes(form.llm_model) && (
-                      <option value={form.llm_model}>
-                        {form.llm_model} · saved
-                      </option>
-                    )}
-                </select>
-              ) : (
-                <input
-                  value={form.llm_model}
-                  onChange={(e) => set("llm_model", e.target.value)}
-                />
-              )}
-            </label>
-          </div>
-          {form.llm_provider === "ollama" && (
-            <p className="caption">
-              {catalog?.models?.llm?.find(
-                (model: Data) => model.id === form.llm_model,
-              )?.description ||
-                "Installed Ollama model. Model size and context affect memory use and response time."}
-              {!(status?.llm?.models || []).includes(form.llm_model) && (
-                <>
-                  {" "}
-                  Install it first: <code>ollama pull {form.llm_model}</code>.
-                </>
-              )}
-            </p>
-          )}
-          {form.llm_provider !== "openai" && (
-            <label className="field">
-              Provider endpoint
-              <input
-                value={form.llm_endpoint}
-                onChange={(e) => set("llm_endpoint", e.target.value)}
-              />
-            </label>
-          )}
-          {form.llm_provider === "ollama" && (
-            <label className="checkbox">
-              <input
-                type="checkbox"
-                checked={!!form.llm_reasoning}
-                disabled={
-                  !!status?.llm?.capabilities?.[form.llm_model] &&
-                  !status.llm.capabilities[form.llm_model].includes("thinking")
-                }
-                onChange={(e) => set("llm_reasoning", e.target.checked)}
-              />
-              Reasoning for episode, scene and shot planning · supported models
-              only; takes longer
-            </label>
-          )}
-          {form.llm_provider === "ollama" && (
-            <label className="field">
-              Context size
-              <select
-                value={form.llm_context_tokens || 16384}
-                onChange={(e) =>
-                  set("llm_context_tokens", Number(e.target.value))
-                }
-              >
-                <option value={4096}>4K · compact scenes</option>
-                <option value={8192}>8K · lower memory</option>
-                <option value={16384}>16K · balanced</option>
-                <option value={32768}>32K · more memory</option>
-                <option value={65536}>64K · large machines</option>
-              </select>
-            </label>
-          )}
-        </section>
+        <LanguageSettings
+          form={form}
+          catalog={catalog}
+          set={set}
+          selectCredential={(provider) => {
+            setCredential(provider);
+            setKey("");
+          }}
+        />
         <section className="settings-section">
           <h3>Visual references</h3>
           <div className="field-row">
@@ -506,10 +388,16 @@ export default function ModelSettings({
               Credential for
               <select
                 value={credential}
-                onChange={(e) => setCredential(e.target.value)}
+                onChange={(e) => {
+                  setCredential(e.target.value);
+                  setKey("");
+                }}
               >
                 <option value="openai">OpenAI</option>
                 <option value="compatible">Compatible provider</option>
+                <option value="openrouter">OpenRouter · free models</option>
+                <option value="lmstudio">LM Studio · optional local key</option>
+                <option value="llamacpp">llama.cpp · optional local key</option>
               </select>
             </label>
             <label className="field">
@@ -549,7 +437,8 @@ export default function ModelSettings({
           {status ? (
             <div className="readiness">
               <Tag success={status.llm.available}>
-                Language model {status.llm.available ? "ready" : "unavailable"}
+                Language model{" "}
+                {status.llm.available ? "listed" : "not available"}
               </Tag>
               <Tag success={status.local.image}>
                 Image {status.local.image ? "installed" : "not installed"}

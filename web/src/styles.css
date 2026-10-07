@@ -2505,3 +2505,22 @@ blockquote {
   display: block;
   margin-top: 12px;
 }
+
+.recovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 340px;
+}
+.recovery-actions .caption {
+  flex-basis: 100%;
+}
+.recovery-banner > div:first-child {
+  flex: 2 1 340px;
+  min-width: 0;
+}
+.settings-section pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
