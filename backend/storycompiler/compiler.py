@@ -10,20 +10,25 @@ def setting_prompt(bible: dict) -> str:
     details = {}
     for field, detail in setting.items():
         if isinstance(detail, dict) and "value" in detail:
+            value = detail["value"].strip()
+            if value.casefold() in ("", "na", "n/a", "unspecified"):
+                continue
             details[field] = {
-                "value": detail.get("value", "Unspecified"),
+                "value": value,
                 "basis": detail.get("basis", "unspecified"),
                 "confidence": detail.get("confidence", "low"),
             }
-    guidance = setting.get("visual_guidance", [])
-    guardrails = setting.get("guardrails", [])
+    guidance = [s.strip() for s in setting.get("visual_guidance", []) if s.strip()]
+    guardrails = [s.strip() for s in setting.get("guardrails", []) if s.strip()]
+    if not details and not guidance and not guardrails:
+        return ""
     return "\n".join(
         [
-            "Story setting anchors (explicit facts and cautious inferences; unspecified means do not invent): "
+            "Approved story setting (source facts, proposed inferences and user choices): "
             + json.dumps(details, ensure_ascii=False),
             "Setting visual guidance: " + "; ".join(guidance),
             "Setting guardrails: " + "; ".join(guardrails),
-            "Keep architecture, clothing, objects and background consistent with these anchors. Do not add unsupported named places, dynasties, symbols or anachronistic details.",
+            "Keep architecture, clothing, objects and background consistent with the supplied settings. Unset fields impose no additional constraint; use the usual story, style and visual canon. Inferences and user choices are adaptation decisions, not established source facts.",
         ]
     )
 

@@ -49,10 +49,17 @@ class Location(Contract):
 
 
 class SettingDetail(Contract):
-    value: str = "Unspecified"
-    basis: Literal["explicit", "inferred", "unspecified"] = "unspecified"
+    value: str = "NA"
+    basis: Literal["explicit", "inferred", "unspecified", "user_defined"] = "unspecified"
     evidence: str = ""
     confidence: Literal["high", "medium", "low"] = "low"
+
+    @model_validator(mode="after")
+    def normalize_missing(self):
+        self.value = self.value.strip()
+        if self.value.casefold() in ("", "na", "n/a", "unspecified"):
+            self.value, self.basis, self.evidence, self.confidence = "NA", "unspecified", "", "low"
+        return self
 
 
 class StorySetting(Contract):

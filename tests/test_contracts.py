@@ -84,7 +84,7 @@ def test_bible_carries_evidence_labeled_world_setting():
     )
     assert setting.period.basis == "inferred"
     assert setting.country_or_region.evidence == "The story names Anatolia"
-    assert setting.polity_or_dynasty.value == "Unspecified"
+    assert setting.polity_or_dynasty.value == "NA"
 
 
 def test_video_and_frame_prompts_include_setting_and_avoid_confident_invention():
@@ -130,8 +130,40 @@ def test_video_and_frame_prompts_include_setting_and_avoid_confident_invention()
     motion = compile_shot(shot, bible, limit=4000)
     for prompt in (frame, motion):
         assert "late 14th century" in prompt
-        assert "Unspecified" in prompt
+        assert "Unspecified" not in prompt
         assert "Do not depict a named dynasty" in prompt
+
+
+def test_missing_setting_adds_no_generation_constraints():
+    from storycompiler.compiler import setting_prompt
+    from storycompiler.contracts import StorySetting
+
+    assert setting_prompt({}) == ""
+    assert setting_prompt({"story_setting": StorySetting().model_dump()}) == ""
+    for value in ("NA", "N/A", "Unspecified", "", "   "):
+        assert setting_prompt({"story_setting": {"period": {"value": value}}}) == ""
+
+
+def test_low_confidence_and_user_selected_settings_survive_compilation():
+    from storycompiler.compiler import setting_prompt
+    from storycompiler.contracts import StorySetting
+
+    setting = StorySetting.model_validate(
+        {
+            "period": {
+                "value": "Medieval",
+                "basis": "inferred",
+                "confidence": "low",
+                "evidence": "A castle is mentioned",
+            },
+            "country_or_region": {"value": "Imaginary island", "basis": "user_defined"},
+            "polity_or_dynasty": {"value": "NA"},
+        }
+    )
+    prompt = setting_prompt({"story_setting": setting.model_dump()})
+    assert "Medieval" in prompt and '"confidence": "low"' in prompt
+    assert "Imaginary island" in prompt and "user_defined" in prompt
+    assert "polity_or_dynasty" not in prompt
 
 
 def test_continuity_gate_catches_unmotivated_state_reset():

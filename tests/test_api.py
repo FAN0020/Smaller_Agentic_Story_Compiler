@@ -29,6 +29,33 @@ def test_upload_utf8_sample_and_reload_project(tmp_path):
         assert c.get("/api/projects/" + p["id"]).status_code == 200
 
 
+def test_setting_can_be_edited_or_cleared_before_freeze_and_then_is_locked(tmp_path):
+    from storycompiler.compiler import setting_prompt
+    from storycompiler.planning import Planner
+    from test_planning import AnalysisModel
+
+    with client(tmp_path) as c:
+        repo = c.app.state.repo
+        p = repo.create_project("Editable setting", "The mouse frees the lion.", {})
+        Planner(repo, AnalysisModel(), lambda *_: None).analyze(p)
+        path = "/api/projects/" + p["id"]
+        bible = {
+            k: v
+            for k, v in p["bible"].items()
+            if k not in ("style_instruction", "policy", "brief", "source_hash")
+        }
+        bible["story_setting"]["period"] = {"value": "Medieval", "basis": "user_defined"}
+        response = c.put(path + "/bible", json=bible)
+        assert response.status_code == 200
+        assert "Medieval" in setting_prompt(c.get(path).json()["bible"])
+        bible["story_setting"]["period"] = {"value": "NA", "basis": "user_defined"}
+        assert c.put(path + "/bible", json=bible).status_code == 200
+        assert setting_prompt(c.get(path).json()["bible"]) == ""
+        assert c.post(path + "/approve", json={"kind": "bible"}).status_code == 200
+        assert c.put(path + "/bible", json=bible).status_code == 409
+        assert c.post(path + "/jobs", json={"kind": "references"}).status_code == 202
+
+
 def test_render_cannot_bypass_approval_and_duplicate_job_is_safe(tmp_path):
     with client(tmp_path) as c:
         p = c.post(
