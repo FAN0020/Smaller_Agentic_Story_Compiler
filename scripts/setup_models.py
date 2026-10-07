@@ -102,12 +102,28 @@ def install_video(root):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "kind", choices=["image", "fast-image", "video", "mlx-image", "speech", "all", "status"]
+        "kind",
+        choices=[
+            "image",
+            "fast-image",
+            "video",
+            "wan-video",
+            "vace-video",
+            "mlx-image",
+            "speech",
+            "all",
+            "status",
+        ],
     )
     parser.add_argument(
         "--root", type=Path, default=Path(os.environ.get("STORY_STUDIO_HOME", ".studio")) / "models"
     )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Plan a Wan/VACE download without fetching weights"
+    )
     args = parser.parse_args()
+    if args.dry_run and args.kind not in ("wan-video", "vace-video"):
+        parser.error("--dry-run is supported for wan-video and vace-video")
     args.root.mkdir(parents=True, exist_ok=True)
     if args.kind == "status":
         print(
@@ -118,11 +134,20 @@ if __name__ == "__main__":
                     "speech": (args.root / "kokoro/READY").exists(),
                     "fast_image": (args.root / "sd-turbo/READY").exists(),
                     "video": (args.root / "ltx-video/READY").exists(),
+                    "wan_video": (args.root / "wan-2.2-ti2v-5b/READY").exists(),
+                    "vace_video": (args.root / "wan-2.1-vace-1.3b/READY").exists(),
                     "free_gib": round(shutil.disk_usage(args.root).free / 1024**3, 1),
                 }
             )
         )
     else:
+        if args.kind in ("wan-video", "vace-video"):
+            from storycompiler.resources import inference_lease
+            from storycompiler.video_install import install_video as install_wan_video
+            from storycompiler.video_models import VACE, WAN
+
+            with inference_lease():
+                install_wan_video(args.root, WAN if args.kind == "wan-video" else VACE, args.dry_run)
         if args.kind == "fast-image":
             install_fast_image(args.root)
         if args.kind == "mlx-image" or (args.kind == "all" and platform.system() == "Darwin"):

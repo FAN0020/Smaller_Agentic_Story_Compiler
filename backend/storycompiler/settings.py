@@ -8,9 +8,10 @@ from typing import Literal
 from urllib.parse import urlparse
 
 from cryptography.fernet import Fernet
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from .domain import Contract
+from .video_models import video_profile
 
 LOCAL_IMAGE_MODELS = {
     "mlx-community/flux2-klein-4b-4bit": "flux2-klein-4b-mlx",
@@ -35,6 +36,12 @@ class ModelSettings(Contract):
     max_generation_calls: int = Field(default=120, ge=1, le=10000)
     local_steps: int = Field(default=20, ge=8, le=50)
     seed: int = Field(default=42, ge=0, le=2147483647)
+
+    @model_validator(mode="after")
+    def supported_local_video(self):
+        if self.video_provider == "local":
+            video_profile(self.video_model)
+        return self
 
     @field_validator("llm_endpoint")
     @classmethod

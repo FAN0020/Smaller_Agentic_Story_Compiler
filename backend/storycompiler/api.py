@@ -28,6 +28,7 @@ from .settings import LOCAL_IMAGE_MODELS, SettingsStore
 from .speech import KOKORO_VOICES
 from .storage import Repository
 from .validation import assert_references_frozen
+from .video_models import LOCAL_VIDEO_MODELS
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SAMPLES = PROJECT_ROOT / "docs/stories"
@@ -189,12 +190,17 @@ def create_app(root: Path | None = None, start_worker=True):
                 ],
                 "voices": KOKORO_VOICES,
                 "video": [
-                    {
-                        "id": "Lightricks/LTX-Video-0.9.1",
-                        "label": "LTX-Video 0.9.1",
-                        "tier": "local",
-                        "description": "Local motion generation; no per-call provider charge, but slower and hardware intensive.",
-                    },
+                    *[
+                        {
+                            "id": model,
+                            "label": p["label"],
+                            "tier": "local",
+                            "description": p["description"],
+                            "recommended_steps": 20 if p["installer"] == "video" else 50,
+                            "install_command": f".venv/bin/python scripts/setup_models.py {p['installer']}",
+                        }
+                        for model, p in LOCAL_VIDEO_MODELS.items()
+                    ],
                     {
                         "id": "sora-2",
                         "label": "Sora 2",
@@ -237,7 +243,8 @@ def create_app(root: Path | None = None, start_worker=True):
             "image": (
                 root / "models" / LOCAL_IMAGE_MODELS.get(configured.image_model, "unavailable") / "READY"
             ).exists(),
-            "video": (root / "models/ltx-video/READY").exists(),
+            "video": configured.video_provider == "local"
+            and (root / "models" / LOCAL_VIDEO_MODELS[configured.video_model]["folder"] / "READY").exists(),
             "ffmpeg": bool(shutil.which("ffmpeg")),
             "system_voice": bool(shutil.which("say")),
             "free_gib": round(shutil.disk_usage(root).free / 1024**3, 1),
@@ -248,6 +255,20 @@ def create_app(root: Path | None = None, start_worker=True):
         local["voices"] = KOKORO_VOICES
         local["resources"] = snapshot(root).record()
         local["image_options"] = []
+        local["video_options"] = []
+        for model, profile in LOCAL_VIDEO_MODELS.items():
+            reason = ""
+            try:
+                check_capacity(model, snapshot(root))
+            except ResourceError as e:
+                reason = str(e)
+            local["video_options"].append(
+                {
+                    "id": model,
+                    "installed": (root / "models" / profile["folder"] / "READY").exists(),
+                    "resource_warning": reason,
+                }
+            )
         for model, folder in LOCAL_IMAGE_MODELS.items():
             reason = ""
             try:

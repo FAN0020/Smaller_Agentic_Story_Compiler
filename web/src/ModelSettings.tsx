@@ -275,7 +275,7 @@ export default function ModelSettings({
                   );
                 }}
               >
-                <option value="local">Local · LTX-Video</option>
+                <option value="local">Local · free video models</option>
                 <option value="openai">OpenAI · Sora</option>
                 <option value="animatic">
                   Illustrated animatic · fast preview
@@ -284,13 +284,27 @@ export default function ModelSettings({
             </label>
             <label className="field">
               Video model
-              {form.video_provider === "openai" ? (
+              {form.video_provider !== "animatic" ? (
                 <select
                   value={form.video_model}
-                  onChange={(e) => set("video_model", e.target.value)}
+                  onChange={(e) => {
+                    set("video_model", e.target.value);
+                    const model = catalog?.models?.video?.find(
+                      (m: Data) => m.id === e.target.value,
+                    );
+                    if (
+                      form.video_provider === "local" &&
+                      model?.recommended_steps
+                    )
+                      set("local_steps", model.recommended_steps);
+                  }}
                 >
                   {(catalog?.models?.video || [])
-                    .filter((model: Data) => model.tier !== "local")
+                    .filter((model: Data) =>
+                      form.video_provider === "local"
+                        ? model.tier === "local"
+                        : model.tier !== "local",
+                    )
                     .map((model: Data) => (
                       <option value={model.id} key={model.id}>
                         {model.label}
@@ -302,6 +316,35 @@ export default function ModelSettings({
               )}
             </label>
           </div>
+          {form.video_provider === "local" && (
+            <>
+              <p className="caption">
+                {
+                  catalog?.models?.video?.find(
+                    (m: Data) => m.id === form.video_model,
+                  )?.description
+                }
+              </p>
+              <p className="caption">
+                {status?.local?.video_options?.find(
+                  (m: Data) => m.id === form.video_model,
+                )?.installed
+                  ? "Checkpoint installed. Each render checks available memory before loading."
+                  : "Checkpoint not installed. Use the install command below before rendering."}
+              </p>
+              {status?.local?.video_options?.find(
+                (m: Data) => m.id === form.video_model,
+              )?.resource_warning && (
+                <p className="warning-box">
+                  {
+                    status.local.video_options.find(
+                      (m: Data) => m.id === form.video_model,
+                    ).resource_warning
+                  }
+                </p>
+              )}
+            </>
+          )}
           {form.video_provider === "animatic" && (
             <p className="warning-box">
               An animatic uses illustrated frames, camera motion, and narration
@@ -550,6 +593,14 @@ export default function ModelSettings({
             <pre>ollama pull qwen3:8b</pre>
             <p>Optional fast reference studies:</p>
             <pre>.venv/bin/python scripts/setup_models.py fast-image</pre>
+            <p>
+              Additional free video models (check available disk space first):
+            </p>
+            <pre>
+              .venv/bin/python scripts/setup_models.py wan-video --dry-run
+            </pre>
+            <pre>.venv/bin/python scripts/setup_models.py wan-video</pre>
+            <pre>.venv/bin/python scripts/setup_models.py vace-video</pre>
             <p className="caption">
               Downloads official checkpoints. No per-generation API charge;
               model license terms still apply.

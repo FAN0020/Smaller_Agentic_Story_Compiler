@@ -25,6 +25,7 @@ from .resources import (
     wait_for_headroom,
 )
 from .settings import LOCAL_IMAGE_MODELS
+from .video_models import LTX, video_profile
 
 
 class Cancelled(RuntimeError):
@@ -52,9 +53,12 @@ class LocalGenerator:
 
     def _run_locked(self, kind, prompt, output, seed, **options):
         model_id = options.get("model_id", "Lightricks/LTX-Video-0.9.1")
-        model = LOCAL_IMAGE_MODELS[options["model_id"]] if kind == "image" else "ltx-video"
+        profile = video_profile(model_id) if kind == "video" else None
+        model = LOCAL_IMAGE_MODELS[options["model_id"]] if kind == "image" else profile["folder"]
         if not (self.root / "models" / model / "READY").exists():
             installer = {"flux2-klein-4b-mlx": "mlx-image", "sd-turbo": "fast-image"}.get(model, kind)
+            if profile:
+                installer = profile["installer"]
             raise ValueError(
                 f"Local {kind} model is not installed. Run .venv/bin/python scripts/setup_models.py {installer}"
             )
@@ -163,15 +167,18 @@ class LocalGenerator:
             size=list(size),
         )
 
-    def video(self, prompt, reference, output, seed, steps, portrait=False):
+    def video(self, prompt, reference, output, seed, steps, portrait=False, model=LTX):
+        profile = video_profile(model)
+        width, height = profile["size"]
         return self._run(
             "video",
             prompt,
             output,
             seed,
+            model_id=model,
             reference=str(reference),
             steps=steps,
-            size=[288, 512] if portrait else [512, 288],
+            size=[height, width] if portrait else [width, height],
         )
 
 

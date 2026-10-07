@@ -33,7 +33,7 @@ Jobs persist in SQLite. Cancellation stops at a safe checkpoint; completed clips
 |---|---|---|
 | Analysis, bibles, direction, critics | Ollama structured-output models | OpenAI or compatible Chat Completions endpoint |
 | Visual references and shot frames | FLUX.2 Klein 4B, bfloat16, native multi-reference input | OpenAI Images generation/edits |
-| Motion clips | LTX-Video 0.9.1, bfloat16 | Sora video creation/status/content |
+| Motion clips | LTX-Video 0.9.1; optional Wan 2.2 TI2V 5B and Wan VACE 1.3B | Sora video creation/status/content |
 | Narration | macOS `say` | OpenAI speech |
 | Assembly | FFmpeg | Always local |
 
@@ -86,4 +86,21 @@ Qwen3 8B is an additional planner option, not a proven quality ranking. Qwen3.5 
 
 Choose **Kokoro neural voices** for free English narration and character dialogue. Pick a narrator and optionally cast each character in Model settings. On an existing directed plan, **Write narration & dialogue** creates a fresh soundtrack script and requires renewed plan approval. Then **Preview soundtrack** records and measures the voices before animation. Listen for pronunciation, pacing and character fit. A complete sentence can span several cuts within a scene; the application never truncates speech or automatically speeds it up. If a line is too long, edit its text or its ending shot and create a new take. Older takes keep their original audio.
 
-Kokoro is CPU-based and supports voice and pace selection; arbitrary emotional acting and lip synchronization are not implemented. Its six exposed presets are English. Local video remains LTX-Video 0.9.1; adding the compact image/speech paths does not establish a new video-model quality benchmark. See [the improvement evidence](docs/implementation/IMPROVEMENTS.md) for measured results and limitations.
+Kokoro is CPU-based and supports voice and pace selection; arbitrary emotional acting and lip synchronization are not implemented. Its six exposed presets are English. See [the improvement evidence](docs/implementation/IMPROVEMENTS.md) for measured results and limitations.
+
+### Additional local video models
+
+**Models & settings → Episode production → Video model** also offers Wan 2.2 TI2V 5B and Wan VACE 1.3B. Both use Apache 2.0 weights with no generation API fee. Wan 2.2 is a newer quality candidate; VACE is a smaller image-guided alternative. Neither has been benchmarked against LTX on this Mac. Their inference paths are experimental until a real render is completed.
+
+```sh
+.venv/bin/python scripts/setup_models.py wan-video --dry-run
+.venv/bin/python scripts/setup_models.py wan-video
+.venv/bin/python scripts/setup_models.py vace-video --dry-run
+.venv/bin/python scripts/setup_models.py vace-video
+```
+
+Keep approximately **50 GiB free before installing both**. Wan alone needs about 42 GiB free; VACE alone about 28 GiB. The installer reports exact requirements, reserves 10 GiB, resumes downloads, verifies weight hashes, and shares identical files between these models. It marks a checkpoint installed only after all files finish. The existing `all` installer retains its original baseline choices; these larger alternatives are opt-in.
+
+The initial presets generate approximately four seconds at **512×288** (or portrait): Wan at 24 fps and VACE at 16 fps. These reduced resolutions conserve memory and do not represent the models' advertised native-resolution quality. Both consume the approved opening image and the compiled shot prompt, including the frozen story setting. VACE locks its opening frame with a conditioning mask. The worker releases the text encoder before loading the motion model, uses the available GPU backend, and retains memory/disk guards. Admission requires 19 GiB available RAM for Wan or 16.5 GiB for VACE, including system headroom. These are provisional budgets, not measured peak memory guarantees.
+
+After installation, select and save the desired model. Already queued jobs keep their frozen model selection; use **New take** for an existing rendered episode. Installation is not proof of successful inference or improved artistic quality. See [video model implementation notes](docs/implementation/LOCAL_VIDEO_MODELS.md).

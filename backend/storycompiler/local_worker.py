@@ -18,6 +18,14 @@ def main():
         limit = request["memory_limit_gib"] * 1024**3
         torch.mps.set_per_process_memory_fraction(min(0.85, limit / torch.mps.recommended_max_memory()))
     torch.set_num_threads(4)
+    if (
+        request["kind"] == "video"
+        and request.get("model_id", "Lightricks/LTX-Video-0.9.1") != "Lightricks/LTX-Video-0.9.1"
+    ):
+        from .wan_worker import run_wan
+
+        run_wan(request, device)
+        return
     generator = torch.Generator("cpu").manual_seed(request["seed"])
     if request["kind"] == "image" and request.get("model_id") == "black-forest-labs/FLUX.2-klein-4B":
         from diffusers import Flux2KleinPipeline

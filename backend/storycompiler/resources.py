@@ -13,6 +13,8 @@ from pathlib import Path
 import psutil
 from filelock import FileLock, Timeout
 
+from .video_models import LOCAL_VIDEO_MODELS
+
 GIB = 1024**3
 RESERVE = 3
 WORKING_SETS = {
@@ -20,7 +22,7 @@ WORKING_SETS = {
     "mlx-community/flux2-klein-4b-4bit": 5.8,
     "black-forest-labs/FLUX.2-klein-4B": 20,
     "stabilityai/sd-turbo": 4,
-    "Lightricks/LTX-Video-0.9.1": 12,
+    **{model: profile["memory_gib"] for model, profile in LOCAL_VIDEO_MODELS.items()},
 }
 
 

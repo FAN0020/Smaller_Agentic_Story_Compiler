@@ -272,6 +272,7 @@ class Producer:
                             receipt["seed"],
                             self.settings.local_steps,
                             p["brief"]["aspect"] == "9:16",
+                            model=self.settings.video_model,
                         )
                     else:
                         self.hosted().video(
