@@ -51,6 +51,8 @@ Tests cover invalid inputs, source coverage, immutable inheritance, stale approv
 
 The director's plan is the editable specification before approval. The interface exposes JSON editors for the bible and complete scene/shot plans. Plan corrections preserve prior revisions, validate timing, scene scope and inheritance, invalidate approval, and add an audit entry. Critics' semantic errors require explicit acceptance. Frozen canon changes use a new project revision. A graphical timeline editor is outside the current interface.
 
+Image details offer a visual revision after episode planning locks the references. The revision copies the source analysis, frozen bible and reference image files, clears reference approvals, and queues the selected image prompt with current model settings. Project creation and job insertion share one transaction after artifact copying; failures discard the partial copy. Episode outlines, plans, productions and reviews stay in the original project. The revised look must be approved and episodes planned again. Ordinary reference regeneration remains available before episode planning.
+
 ## Execution choice
 
 The first production profile deliberately uses four-second motion units. Models do not universally support a one-call 1–4 minute episode, and a single call cannot provide clip-level retries or checkpoint reuse. Scene and shot agents allocate meaningful coverage; code assigns exact duration and lineage. FFmpeg assembles the clips into the selected 60, 120, 180 or 240 second target. Provider adapters own native duration/resolution constraints, credentials, submission receipts and errors. No model can bypass reference/plan approval by writing a different status string.

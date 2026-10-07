@@ -21,7 +21,7 @@ from .contracts import BibleDraft, PlanRevision
 from .domain import STYLES, Contract, CreativeBrief
 from .jobs import JobWorker
 from .planning import Planner
-from .production import Producer, assert_production_approved
+from .production import Producer, assert_production_approved, file_hash
 from .resources import ResourceError, check_capacity, snapshot
 from .review import revise_plan
 from .settings import LOCAL_IMAGE_MODELS, SettingsStore
@@ -100,6 +100,16 @@ class Approval(Contract):
     kind: Literal["bible", "references", "plans", "video"]
     numbers: list[int] = Field(default_factory=list)
     accept_findings: bool = False
+
+
+class ReferenceRevision(Contract):
+    only: str = Field(min_length=1)
+    prompt: str = Field(min_length=1, max_length=10000)
+
+    @field_validator("prompt")
+    @classmethod
+    def nonempty_prompt(cls, value):
+        return JobRequest.nonempty_prompt(value)
 
 
 def create_app(root: Path | None = None, start_worker=True):
@@ -349,6 +359,26 @@ def create_app(root: Path | None = None, start_worker=True):
             p["bible"].update(bible.model_dump())
             repo.save_project(p)
             return p
+
+    @app.post("/api/projects/{id}/reference-revision", status_code=201)
+    def reference_revision(id: str, body: ReferenceRevision):
+        with lock:
+            idle(id)
+            p = repo.get_project(id)
+            Planner.assert_frozen(p)
+            entity_ids = {e["id"] for kind in ("characters", "locations") for e in p["bible"][kind]}
+            if body.only not in entity_ids or body.only not in p["references"]:
+                raise ValueError("Choose an existing character or location reference in this story")
+            directory = repo.artifact_dir(id).resolve()
+            for reference in p["references"].values():
+                path = (directory / reference["file"]).resolve()
+                if path.parent != directory or not path.is_file():
+                    raise ValueError("A reference image is missing; restore it before creating a revision")
+                if file_hash(path) != reference["sha256"]:
+                    raise ValueError("A reference image changed on disk; restore it before creating a revision")
+            payload = {**body.model_dump(), "model_settings": settings.get().model_dump()}
+            new = repo.create_reference_revision(p, payload)
+            return {**new, "jobs": repo.jobs(new["id"])}
 
     @app.post("/api/projects/{id}/jobs", status_code=202)
     def submit_job(id: str, body: JobRequest):

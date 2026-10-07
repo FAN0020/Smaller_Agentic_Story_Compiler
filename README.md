@@ -27,6 +27,8 @@ Model installation is separate from startup and resumable. FLUX.2 Klein image we
 
 Jobs persist in SQLite. Cancellation stops at a safe checkpoint; completed clips remain. Failed/interrupted work can resume. Each job freezes model choices when queued; global settings changes do not change that job. **New take** archives the previous output and receipts, retains the approved plan, and permits a fresh render with different model settings. An ambiguous paid-video submission requires checking the provider account rather than silently submitting twice.
 
+To change a character or location image, open its image details, edit **Image prompt**, and choose **Regenerate image**. After episode planning, use **Create revision & regenerate** in the same dialog. The new visual revision retains the analyzed story, frozen bible and existing references, then regenerates the selected image with your prompt. Approve its references and plan episodes again; the original project, plans and videos remain available. Generation progress and failures appear inside the image dialog, and a failed job's prompt survives reloading.
+
 ## Local and API models
 
 | Stage | Local | API |

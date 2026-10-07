@@ -12,6 +12,11 @@ type Props = {
   setSelected: (n: number[]) => void;
   act: (path: string, body: Data) => Promise<void>;
   job: (kind: string, extra?: Data) => Promise<void>;
+  regenerateReference: (
+    only: string,
+    prompt: string,
+    revision: boolean,
+  ) => Promise<void>;
   navigate: (p: string) => void;
   settings: Data;
   openSettings: () => void;
@@ -23,6 +28,7 @@ export default function ProductionView({
   setSelected,
   act,
   job,
+  regenerateReference,
   navigate,
   settings,
   openSettings,
@@ -30,6 +36,8 @@ export default function ProductionView({
   const [accept, setAccept] = useState(false);
   const [detailId, setDetailId] = useState("");
   const [promptDraft, setPromptDraft] = useState("");
+  const [detailError, setDetailError] = useState("");
+  const [submittingReference, setSubmittingReference] = useState(false);
   const detailDialog = useRef<HTMLDialogElement>(null);
   const entities = p?.bible
     ? [...p.bible.characters, ...p.bible.locations]
@@ -38,6 +46,48 @@ export default function ProductionView({
   const detailReference = detailEntity
     ? p?.references?.[detailEntity.id]
     : null;
+  const activeJob = p?.jobs?.find((j: Data) =>
+    ["queued", "running"].includes(j.status),
+  );
+  const referenceJob = p?.jobs?.find(
+    (j: Data) =>
+      j.kind === "references" &&
+      (!j.payload.only || j.payload.only === detailId),
+  );
+  const referenceFailed =
+    referenceJob &&
+    ["failed", "interrupted", "cancelled"].includes(referenceJob.status);
+  function inspectReference(entity: Data, reference: Data) {
+    const pending = p?.jobs?.find(
+      (j: Data) => j.kind === "references" && j.payload.only === entity.id,
+    );
+    setPromptDraft(
+      pending &&
+        ["queued", "running", "failed", "interrupted", "cancelled"].includes(
+          pending.status,
+        )
+        ? pending.payload.prompt || reference.prompt || ""
+        : reference.prompt || "",
+    );
+    setDetailError("");
+    setDetailId(entity.id);
+  }
+  async function regenerate() {
+    if (!detailEntity || !p || submittingReference) return;
+    setDetailError("");
+    setSubmittingReference(true);
+    try {
+      await regenerateReference(
+        detailEntity.id,
+        promptDraft,
+        !!p.episodes.length,
+      );
+    } catch (error) {
+      setDetailError((error as Error).message);
+    } finally {
+      setSubmittingReference(false);
+    }
+  }
   const evidence: string[] =
     detailEntity && detailReference && p
       ? [
@@ -156,10 +206,7 @@ export default function ProductionView({
                   <button
                     className="reference-image-button"
                     aria-label={`Inspect ${e.name} visual reference`}
-                    onClick={() => {
-                      setPromptDraft(r.prompt || "");
-                      setDetailId(e.id);
-                    }}
+                    onClick={() => inspectReference(e, r)}
                   >
                     <img
                       src={artifact(p.id, r.file)}
@@ -178,14 +225,11 @@ export default function ProductionView({
                     {e.costume !== undefined ? "CHARACTER" : "LOCATION"}
                   </span>
                   <h3>{e.name}</h3>
-                  {r && !p.episodes.length && (
+                  {r && (
                     <button
                       className="text-button"
                       disabled={busy}
-                      onClick={() => {
-                        setPromptDraft(r.prompt || "");
-                        setDetailId(e.id);
-                      }}
+                      onClick={() => inspectReference(e, r)}
                     >
                       <RefreshCw size={12} /> Inspect or regenerate
                     </button>
@@ -234,6 +278,7 @@ export default function ProductionView({
                     : "LOCATION REFERENCE"}
                 </p>
                 <h2 id="reference-detail-title">{detailEntity.name}</h2>
+                <p className="caption">{p.title}</p>
               </div>
               <button
                 className="icon-button"
@@ -320,11 +365,21 @@ export default function ProductionView({
                   change the visual result, including the style direction for
                   this image. Source-grounded story facts remain read only.
                 </p>
+                {!!p.episodes.length && (
+                  <p className="caption">
+                    Episode planning has locked this look. Regenerating creates
+                    a visual revision with your story analysis and existing
+                    reference images. Approve the revised references and plan
+                    episodes again. Your original project and videos are
+                    preserved.
+                  </p>
+                )}
                 <label className="field">
                   Image prompt
                   <textarea
                     rows={7}
                     maxLength={10000}
+                    disabled={busy || submittingReference}
                     value={promptDraft}
                     onChange={(event) => setPromptDraft(event.target.value)}
                   />
@@ -345,32 +400,42 @@ export default function ProductionView({
                   <dd>{detailReference.attempt}</dd>
                 </dl>
               </section>
+              {(detailError || (referenceFailed && !activeJob)) && (
+                <div role="alert" className="error-banner">
+                  {detailError || referenceJob.error || referenceJob.message}
+                </div>
+              )}
+              {activeJob && (
+                <p role="status" className="caption">
+                  {activeJob.message} · {Math.round(activeJob.progress * 100)}%
+                </p>
+              )}
+              {!detailError &&
+                !activeJob &&
+                referenceJob?.status === "complete" &&
+                referenceJob.payload.only === detailId &&
+                detailReference.prompt === promptDraft && (
+                  <p role="status" className="caption">
+                    Image regenerated. Review the result before approving
+                    references.
+                  </p>
+                )}
               <div className="action-row reference-detail-actions">
                 <Button secondary onClick={() => setDetailId("")}>
                   Close
                 </Button>
                 <Button
-                  disabled={busy || !!p.episodes.length || !promptDraft.trim()}
-                  onClick={() =>
-                    void job("references", {
-                      only: detailEntity.id,
-                      prompt: promptDraft,
-                    })
-                  }
+                  disabled={busy || submittingReference || !promptDraft.trim()}
+                  onClick={() => void regenerate()}
                 >
                   <RefreshCw size={14} />{" "}
-                  {p.episodes.length
-                    ? "Locked by episode plans"
-                    : "Regenerate image"}
+                  {submittingReference
+                    ? "Starting regeneration…"
+                    : p.episodes.length
+                      ? "Create revision & regenerate"
+                      : "Regenerate image"}
                 </Button>
               </div>
-              {!!p.episodes.length && (
-                <p className="caption">
-                  References are locked after episode planning to preserve
-                  visual continuity. Create a project revision to redesign the
-                  shared look.
-                </p>
-              )}
             </div>
           </>
         )}

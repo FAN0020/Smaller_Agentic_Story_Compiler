@@ -69,9 +69,9 @@ class Producer:
 
     def references(self, p, only=None, prompt_override=None):
         Planner.assert_frozen(p)
+        if p["episodes"]:
+            raise ValueError("References are frozen by episode plans; create a revision to redesign them")
         if p["references_hash"]:
-            if p["episodes"]:
-                raise ValueError("References are frozen by episode plans; create a revision to redesign them")
             p["references_hash"] = None
             for reference in p["references"].values():
                 reference["approved"] = False

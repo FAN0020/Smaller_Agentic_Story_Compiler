@@ -1,9 +1,11 @@
 """SQLite snapshots and durable job queue. Each write is an explicit transaction."""
 
 import json
+import shutil
 import sqlite3
 import time
 from contextlib import contextmanager
+from copy import deepcopy
 from pathlib import Path
 from uuid import uuid4
 
@@ -68,6 +70,52 @@ class Repository:
             raise KeyError("Project not found")
         return json.loads(row["data"])
 
+    def create_reference_revision(self, parent, payload):
+        """Publish a copied visual workspace and its first job together, after copying artifacts."""
+        now = time.time()
+        new = {
+            key: deepcopy(parent[key])
+            for key in ("source", "brief", "analyses", "events", "bible", "bible_hash", "references")
+        }
+        for key in ("bible_sections_done", "estimated_episode_count"):
+            if key in parent:
+                new[key] = parent[key]
+        new.update(
+            id=uuid4().hex,
+            title=parent["title"] + " · visual revision",
+            parent_project=parent["id"],
+            status="references_review",
+            version=1,
+            created=now,
+            updated=now,
+            episodes=[],
+            plans={},
+            productions={},
+            reviews={},
+            references_hash=None,
+            audit=[
+                {
+                    "action": "reference_revision",
+                    "parent_project": parent["id"],
+                    "entity": payload["only"],
+                    "at": now,
+                }
+            ],
+        )
+        source = self.artifact_dir(parent["id"])
+        destination = self.artifact_dir(new["id"])
+        try:
+            for reference in new["references"].values():
+                shutil.copy2(source / reference["file"], destination / reference["file"])
+                reference["approved"] = False
+            with self.connect() as c:
+                c.execute("INSERT INTO projects VALUES(?,?,?,?)", (new["id"], 1, now, json.dumps(new)))
+                self._insert_job(c, new["id"], "references", payload)
+        except Exception:
+            shutil.rmtree(destination)
+            raise
+        return new
+
     def list_projects(self):
         with self.connect() as c:
             rows = c.execute("SELECT data FROM projects ORDER BY updated DESC").fetchall()
@@ -95,13 +143,18 @@ class Repository:
                 if active["kind"] == kind and json.loads(active["payload"]) == payload:
                     return self._job(active)
                 raise ValueError("This project already has an active job")
-            now = time.time()
-            id = uuid4().hex
-            c.execute(
-                "INSERT INTO jobs VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                (id, project_id, kind, json.dumps(payload), "queued", 0, "Queued", None, now, now, 0),
-            )
+            id = self._insert_job(c, project_id, kind, payload)
         return self.get_job(id)
+
+    @staticmethod
+    def _insert_job(c, project_id, kind, payload):
+        now = time.time()
+        id = uuid4().hex
+        c.execute(
+            "INSERT INTO jobs VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            (id, project_id, kind, json.dumps(payload), "queued", 0, "Queued", None, now, now, 0),
+        )
+        return id
 
     @staticmethod
     def _job(row):

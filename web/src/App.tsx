@@ -119,6 +119,26 @@ export default function App() {
       setNotice("Saved successfully");
     });
   }
+  async function regenerateReference(
+    only: string,
+    prompt: string,
+    revision: boolean,
+  ) {
+    if (!id) return;
+    if (!revision) return job("references", { only, prompt });
+    await run(async () => {
+      const next = await send(`/projects/${id}/reference-revision`, {
+        only,
+        prompt,
+      });
+      currentId.current = next.id;
+      setId(next.id);
+      setProject(next);
+      setProjects((list) => [next, ...list.filter((p) => p.id !== next.id)]);
+      setSelected([1]);
+      setNotice("Visual revision created");
+    });
+  }
   // Event handlers consume failures here; error text remains visible in the page.
   const safeJob = async (kind: string, extra?: Data) => {
     try {
@@ -332,6 +352,7 @@ export default function App() {
                 setSelected={setSelected}
                 act={act}
                 job={safeJob}
+                regenerateReference={regenerateReference}
                 navigate={setPage}
                 settings={settings}
                 openSettings={() => setModelDialog(true)}
