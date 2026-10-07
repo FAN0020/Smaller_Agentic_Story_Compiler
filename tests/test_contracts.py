@@ -58,6 +58,82 @@ def test_bible_rejects_colliding_character_and_location_identifiers():
         )
 
 
+def test_bible_carries_evidence_labeled_world_setting():
+    c, _ = api()
+    setting = c.StorySetting.model_validate(
+        {
+            "period": {
+                "value": "late 14th century",
+                "basis": "inferred",
+                "evidence": "Bronze cannon are named",
+                "confidence": "medium",
+            },
+            "country_or_region": {
+                "value": "Anatolia",
+                "basis": "explicit",
+                "evidence": "The story names Anatolia",
+                "confidence": "high",
+            },
+            "polity_or_dynasty": {
+                "value": "Unspecified",
+                "basis": "unspecified",
+                "evidence": "",
+                "confidence": "low",
+            },
+        }
+    )
+    assert setting.period.basis == "inferred"
+    assert setting.country_or_region.evidence == "The story names Anatolia"
+    assert setting.polity_or_dynasty.value == "Unspecified"
+
+
+def test_video_and_frame_prompts_include_setting_and_avoid_confident_invention():
+    c, _ = api()
+    from storycompiler.compiler import compile_frame, compile_shot
+
+    setting = {
+        "period": {
+            "value": "late 14th century",
+            "basis": "inferred",
+            "evidence": "Bronze cannon are named",
+            "confidence": "medium",
+        },
+        "country_or_region": {
+            "value": "Anatolia",
+            "basis": "explicit",
+            "evidence": "The story names Anatolia",
+            "confidence": "high",
+        },
+        "polity_or_dynasty": {
+            "value": "Unspecified",
+            "basis": "unspecified",
+            "evidence": "",
+            "confidence": "low",
+        },
+        "cultural_context": {
+            "value": "Anatolian frontier society",
+            "basis": "inferred",
+            "evidence": "The story mentions steppe raids and stone forts",
+            "confidence": "medium",
+        },
+        "visual_guidance": ["late medieval stone fortifications"],
+        "guardrails": ["Do not depict a named dynasty"],
+    }
+    bible = {
+        "characters": [{"id": "c1", "name": "Lion", "appearance": "golden mane"}],
+        "locations": [{"id": "l1", "name": "Forest", "appearance": "acacia clearing"}],
+        "style_instruction": "Watercolor on paper",
+        "story_setting": setting,
+    }
+    shot = c.ShotPlan(**shot_payload())
+    frame = compile_frame(shot, bible, {})
+    motion = compile_shot(shot, bible, limit=4000)
+    for prompt in (frame, motion):
+        assert "late 14th century" in prompt
+        assert "Unspecified" in prompt
+        assert "Do not depict a named dynasty" in prompt
+
+
 def test_continuity_gate_catches_unmotivated_state_reset():
     c, v = api()
     a = c.ShotPlan(**shot_payload())

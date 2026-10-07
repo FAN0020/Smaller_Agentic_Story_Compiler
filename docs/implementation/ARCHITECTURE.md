@@ -16,7 +16,7 @@ Model work is explicit at four layers: grounded story evidence; director intent;
 
 ## Inheritance and approval
 
-Series bible content and the approved character/location image manifest are hashed and frozen before episode division. Episodes inherit both hashes. Scenes inherit episode identity and shared bible. Shots inherit scene geography, lighting, characters, locations, style and incoming continuity state. Generation adds an approved, content-hashed reference manifest. Every clip records inputs, provider/model, seed and prompt. Changing canon requires a new project revision; successful work is never silently overwritten. Reference rejection allows targeted regeneration before approval.
+Series bible content and the approved character/location image manifest are hashed and frozen before episode division. The bible includes a shared historical and cultural setting profile (period, country/region, polity/dynasty, architecture, clothing, material culture, language and climate). Each setting detail records whether the source states it, the model cautiously infers it, or it is unspecified, along with evidence and confidence. Scenes and shots inherit this profile; compiled image and motion prompts include its visual guidance and guardrails. Episodes inherit both hashes. Scenes inherit episode identity and shared bible. Shots inherit scene geography, lighting, characters, locations, style and incoming continuity state. Generation adds an approved, content-hashed reference manifest. Every clip records inputs, provider/model, seed and prompt. Changing canon requires a new project revision; successful work is never silently overwritten. Reference rejection allows targeted regeneration before approval.
 
 ## Directing and gates
 

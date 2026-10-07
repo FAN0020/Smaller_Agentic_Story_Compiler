@@ -110,6 +110,65 @@ export default function PlanView({
               Every episode inherits these identities, the visual style, and the
               directing rules.
             </p>
+            <section
+              className="setting-profile"
+              aria-label="Historical and cultural setting"
+            >
+              <div className="section-title">
+                <h3>Historical & cultural setting</h3>
+                <Tag>Shared visual canon</Tag>
+              </div>
+              {b.story_setting ? (
+                <>
+                  <p className="muted">
+                    Source facts and careful inferences guide every scene and
+                    shot. Unspecified details stay open instead of being
+                    invented as facts.
+                  </p>
+                  <div className="setting-facts">
+                    {[
+                      ["Period", b.story_setting?.period],
+                      ["Country / region", b.story_setting?.country_or_region],
+                      ["Polity / dynasty", b.story_setting?.polity_or_dynasty],
+                      ["Cultural context", b.story_setting?.cultural_context],
+                      ["Architecture", b.story_setting?.architecture],
+                      ["Clothing", b.story_setting?.clothing],
+                      ["Material culture", b.story_setting?.material_culture],
+                      ["Language", b.story_setting?.language],
+                      ["Climate", b.story_setting?.climate],
+                    ].map(([label, item]: any) => (
+                      <div key={label}>
+                        <span className="small-label">{label}</span>
+                        <strong>{item?.value || "Unspecified"}</strong>
+                        <Tag>
+                          {item?.basis || "unspecified"} ·{" "}
+                          {item?.confidence || "low"}
+                        </Tag>
+                        {item?.evidence && <p>{item.evidence}</p>}
+                      </div>
+                    ))}
+                  </div>
+                  {b.story_setting.visual_guidance?.length > 0 && (
+                    <p>
+                      <strong>Visual guidance:</strong>{" "}
+                      {b.story_setting.visual_guidance.join(" · ")}
+                    </p>
+                  )}
+                  {b.story_setting.guardrails?.length > 0 && (
+                    <p>
+                      <strong>Keep consistent:</strong>{" "}
+                      {b.story_setting.guardrails.join(" · ")}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="muted">
+                  This saved bible predates setting profiles. Create a project
+                  revision to add historical and cultural anchors before
+                  planning production.
+                </p>
+              )}
+            </section>
             <div className="entity-grid">
               {b.characters.map((c: Data) => (
                 <article className="entity-card" key={c.id}>

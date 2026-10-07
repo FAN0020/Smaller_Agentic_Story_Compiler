@@ -48,6 +48,27 @@ class Location(Contract):
     design_choices: str
 
 
+class SettingDetail(Contract):
+    value: str = "Unspecified"
+    basis: Literal["explicit", "inferred", "unspecified"] = "unspecified"
+    evidence: str = ""
+    confidence: Literal["high", "medium", "low"] = "low"
+
+
+class StorySetting(Contract):
+    period: SettingDetail = Field(default_factory=SettingDetail)
+    country_or_region: SettingDetail = Field(default_factory=SettingDetail)
+    polity_or_dynasty: SettingDetail = Field(default_factory=SettingDetail)
+    cultural_context: SettingDetail = Field(default_factory=SettingDetail)
+    architecture: SettingDetail = Field(default_factory=SettingDetail)
+    clothing: SettingDetail = Field(default_factory=SettingDetail)
+    material_culture: SettingDetail = Field(default_factory=SettingDetail)
+    language: SettingDetail = Field(default_factory=SettingDetail)
+    climate: SettingDetail = Field(default_factory=SettingDetail)
+    visual_guidance: list[str] = Field(default_factory=list)
+    guardrails: list[str] = Field(default_factory=list)
+
+
 class BibleDraft(Contract):
     title: str
     logline: str
@@ -59,6 +80,7 @@ class BibleDraft(Contract):
     adaptation_notes: list[str]
     content_warnings: list[str]
     visual_motifs: list[str]
+    story_setting: StorySetting = Field(default_factory=StorySetting)
 
     @model_validator(mode="after")
     def unique_identities(self):

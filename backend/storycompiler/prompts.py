@@ -54,6 +54,12 @@ Do not plan episodes, cameras or appearance.""",
 summaries/events and any previous draft. Preserve existing character/location IDs when updating.
 Choose the principal recurring characters and locations needed for the whole story. Establish durable
 appearance, costume, voice tendencies, location landmarks, genre, and directing principles.
+Also infer a shared historical/cultural story_setting: period, country_or_region, polity_or_dynasty, cultural context,
+architecture, clothing, material culture, language and climate. For EVERY detail, use basis=explicit only
+when the source says it, inferred for a cautious best-fit inference, or unspecified when evidence is weak;
+include concise source evidence and high/medium/low confidence. Do not turn genre, names or folklore tropes
+alone into a confident country or dynasty. Supply useful visual_guidance and guardrails for image/video
+prompts, and keep uncertain or unspecified details open rather than fabricating precise symbols or costumes.
 Keep design_choices separate from source_facts. Label age adaptations. Apply the selected mode policy.
 Do not allocate episodes or shots. Keep descriptions concrete and concise.""",
     "episode-planner": """Own episode boundaries and dramaturgy, not individual shots. Partition ALL supplied

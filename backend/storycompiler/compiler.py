@@ -5,12 +5,36 @@ import json
 from .contracts import ShotPlan
 
 
+def setting_prompt(bible: dict) -> str:
+    setting = bible.get("story_setting") or {}
+    details = {}
+    for field, detail in setting.items():
+        if isinstance(detail, dict) and "value" in detail:
+            details[field] = {
+                "value": detail.get("value", "Unspecified"),
+                "basis": detail.get("basis", "unspecified"),
+                "confidence": detail.get("confidence", "low"),
+            }
+    guidance = setting.get("visual_guidance", [])
+    guardrails = setting.get("guardrails", [])
+    return "\n".join(
+        [
+            "Story setting anchors (explicit facts and cautious inferences; unspecified means do not invent): "
+            + json.dumps(details, ensure_ascii=False),
+            "Setting visual guidance: " + "; ".join(guidance),
+            "Setting guardrails: " + "; ".join(guardrails),
+            "Keep architecture, clothing, objects and background consistent with these anchors. Do not add unsupported named places, dynasties, symbols or anachronistic details.",
+        ]
+    )
+
+
 def compile_frame(shot: ShotPlan, bible: dict, scene: dict) -> str:
     characters = [c for c in bible["characters"] if c["id"] in shot.characters]
     location = next(l for l in bible["locations"] if l["id"] == shot.location_id)
     return "\n".join(
         [
             bible["style_instruction"],
+            setting_prompt(bible),
             "A single unified cinematic opening frame. All subjects share one environment. No panels, collage, labels or text.",
             "Subjects: "
             + "; ".join(f"{c['name']}: {c['appearance']}; {c.get('costume', '')}" for c in characters),
@@ -32,6 +56,7 @@ def compile_shot(shot: ShotPlan, bible: dict, limit: int = 12000, scene: dict | 
     loc = next(x for x in bible["locations"] if x["id"] == shot.location_id)
     pieces = [
         bible["style_instruction"],
+        setting_prompt(bible),
         "Subjects: " + "; ".join(f"{c['name']}: {c['appearance']}; {c.get('costume', '')}" for c in chars),
         "Visible action: " + shot.action,
         "Visual focus: " + shot.visual_focus,

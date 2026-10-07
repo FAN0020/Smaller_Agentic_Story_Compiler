@@ -31,7 +31,8 @@ def shot_context(context, scene):
     bible = {
         k: v
         for k, v in context.get("bible", {}).items()
-        if k in ("characters", "locations", "style_instruction", "policy", "directing_principles")
+        if k
+        in ("characters", "locations", "style_instruction", "policy", "directing_principles", "story_setting")
     }
     for kind in ("characters", "locations"):
         if kind in bible:
