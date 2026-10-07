@@ -67,10 +67,14 @@ class Producer:
         size = {"16:9": (512, 288), "9:16": (288, 512)}.get(aspect, (512, 512))
         return self.local.image(prompt, output, seed, references, self.settings.image_model, size=size)
 
-    def references(self, p, only=None):
+    def references(self, p, only=None, prompt_override=None):
         Planner.assert_frozen(p)
         if p["references_hash"]:
-            raise ValueError("References are frozen; create a revision to redesign them")
+            if p["episodes"]:
+                raise ValueError("References are frozen by episode plans; create a revision to redesign them")
+            p["references_hash"] = None
+            for reference in p["references"].values():
+                reference["approved"] = False
         entities = [(kind, e) for kind in ("characters", "locations") for e in p["bible"][kind]]
         directory = self.repo.artifact_dir(p["id"])
         for i, (kind, entity) in enumerate(entities):
@@ -88,8 +92,12 @@ class Producer:
                 if kind == "characters"
                 else "Wide environment, no people, clear landmarks"
             )
-            prompt = f"{style} painting. {purpose}. {entity['name']}: {entity['appearance']}. {entity.get('costume', entity.get('lighting', ''))}. No text."
-            self.image(prompt, directory / file, self.settings.seed + i + attempt)
+            prompt = (
+                prompt_override
+                or f"{style} painting. {purpose}. {entity['name']}: {entity['appearance']}. {entity.get('costume', entity.get('lighting', ''))}. No text."
+            )
+            seed = self.settings.seed + i + attempt
+            self.image(prompt, directory / file, seed)
             p["references"][entity["id"]] = {
                 "file": file,
                 "name": entity["name"],
@@ -101,6 +109,8 @@ class Producer:
                 "provider": self.settings.image_provider,
                 "model": self.settings.image_model,
                 "attempt": attempt,
+                "seed": seed,
+                "style": p["brief"]["style"],
             }
             self.repo.save_project(p)
         p["status"] = "references_review"

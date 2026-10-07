@@ -63,7 +63,7 @@ class JobWorker:
             elif kind == "episodes":
                 planner.episodes(p)
             elif kind == "references":
-                producer.references(p, options.get("only"))
+                producer.references(p, options.get("only"), options.get("prompt"))
             elif kind == "direct":
                 planner.direct(p, options["numbers"])
             elif kind == "audio":

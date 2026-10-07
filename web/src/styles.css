@@ -1416,6 +1416,91 @@ nav {
   object-fit: cover;
   display: block;
 }
+.reference-image-button {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: #e9ebdf;
+  cursor: pointer;
+  position: relative;
+}
+.reference-image-button span {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  padding: 7px 10px;
+  border-radius: 5px;
+  color: white;
+  background: #263628c9;
+  font-size: 10px;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+.reference-image-button:hover span,
+.reference-image-button:focus-visible span {
+  opacity: 1;
+}
+.reference-detail-dialog {
+  width: min(760px, calc(100vw - 28px));
+}
+.reference-detail-body {
+  max-height: calc(90vh - 115px);
+}
+.reference-detail-image {
+  display: block;
+  max-height: 42vh;
+  max-width: 100%;
+  object-fit: contain;
+  margin: 0 auto 22px;
+  border-radius: 7px;
+  background: #e9ebdf;
+}
+.reference-facts {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.32fr) 1fr;
+  gap: 9px 16px;
+  margin: 16px 0;
+  font-size: 11px;
+}
+.reference-facts dt {
+  color: #58684e;
+  font-weight: 600;
+}
+.reference-facts dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.reference-generation-facts {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.reference-evidence blockquote {
+  margin: 9px 0;
+  padding: 10px 13px;
+  border-left: 2px solid #91a780;
+  background: #eef1e8;
+  color: #404b3c;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.reference-detail-body h4 {
+  margin-top: 18px;
+  font-size: 11px;
+}
+.reference-detail-actions {
+  justify-content: flex-end;
+}
+@media (max-width: 600px) {
+  .reference-facts {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .reference-facts dd {
+    margin-bottom: 8px;
+  }
+}
 .reference-copy {
   padding: 14px;
 }

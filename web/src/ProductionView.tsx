@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ArrowRight, Check, Clapperboard, RefreshCw } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowRight, Check, Clapperboard, RefreshCw, X } from "lucide-react";
 import { artifact } from "./api";
 import type { Data } from "./api";
 import { Button, Empty, EpisodePicker, Header, Tag } from "./components";
@@ -28,6 +28,49 @@ export default function ProductionView({
   openSettings,
 }: Props) {
   const [accept, setAccept] = useState(false);
+  const [detailId, setDetailId] = useState("");
+  const [promptDraft, setPromptDraft] = useState("");
+  const detailDialog = useRef<HTMLDialogElement>(null);
+  const entities = p?.bible
+    ? [...p.bible.characters, ...p.bible.locations]
+    : [];
+  const detailEntity = entities.find((entity: Data) => entity.id === detailId);
+  const detailReference = detailEntity
+    ? p?.references?.[detailEntity.id]
+    : null;
+  const evidence: string[] =
+    detailEntity && detailReference && p
+      ? [
+          ...new Set<string>(
+            p.events
+              .filter((event: Data) => {
+                const linked =
+                  detailReference.kind === "characters"
+                    ? (event.characters || []).some(
+                        (value: string) =>
+                          value === detailEntity.id ||
+                          value.toLowerCase() ===
+                            detailEntity.name.toLowerCase(),
+                      )
+                    : event.location === detailEntity.id ||
+                      String(event.location || "").toLowerCase() ===
+                        detailEntity.name.toLowerCase();
+                return linked && event.quote;
+              })
+              .map((event: Data): string => event.quote),
+          ),
+        ].slice(0, 5)
+      : [];
+  useEffect(() => {
+    const dialog = detailDialog.current;
+    if (!dialog) return;
+    if (detailEntity && !dialog.open) {
+      dialog.showModal();
+      dialog.focus();
+      dialog.querySelector<HTMLElement>(".dialog-body")?.scrollTo(0, 0);
+    }
+    if (!detailEntity && dialog.open) dialog.close();
+  }, [detailEntity]);
   if (!p?.bible_hash)
     return (
       <Empty
@@ -38,7 +81,6 @@ export default function ProductionView({
         references.
       </Empty>
     );
-  const entities = [...p.bible.characters, ...p.bible.locations];
   const allRefs = entities.every((e: Data) => p.references[e.id]);
   const allPlans =
     selected.length > 0 &&
@@ -111,16 +153,20 @@ export default function ProductionView({
             return (
               <article className="reference-card" key={e.id}>
                 {r ? (
-                  <a
-                    href={artifact(p.id, r.file)}
-                    target="_blank"
-                    rel="noreferrer"
+                  <button
+                    className="reference-image-button"
+                    aria-label={`Inspect ${e.name} visual reference`}
+                    onClick={() => {
+                      setPromptDraft(r.prompt || "");
+                      setDetailId(e.id);
+                    }}
                   >
                     <img
                       src={artifact(p.id, r.file)}
                       alt={`${e.name} visual reference`}
                     />
-                  </a>
+                    <span>View image details</span>
+                  </button>
                 ) : (
                   <div className="reference-placeholder">
                     <span>{e.name.replace(/^The /, "")[0]}</span>
@@ -132,13 +178,16 @@ export default function ProductionView({
                     {e.costume !== undefined ? "CHARACTER" : "LOCATION"}
                   </span>
                   <h3>{e.name}</h3>
-                  {r && !p.references_hash && (
+                  {r && !p.episodes.length && (
                     <button
                       className="text-button"
                       disabled={busy}
-                      onClick={() => void job("references", { only: e.id })}
+                      onClick={() => {
+                        setPromptDraft(r.prompt || "");
+                        setDetailId(e.id);
+                      }}
                     >
-                      <RefreshCw size={12} /> Regenerate
+                      <RefreshCw size={12} /> Inspect or regenerate
                     </button>
                   )}
                 </div>
@@ -168,6 +217,164 @@ export default function ProductionView({
           </div>
         )}
       </section>
+      <dialog
+        ref={detailDialog}
+        tabIndex={-1}
+        className="settings-dialog reference-detail-dialog"
+        aria-labelledby="reference-detail-title"
+        onCancel={() => setDetailId("")}
+      >
+        {detailEntity && detailReference && (
+          <>
+            <div className="dialog-head">
+              <div>
+                <p className="eyebrow">
+                  {detailReference.kind === "characters"
+                    ? "CHARACTER REFERENCE"
+                    : "LOCATION REFERENCE"}
+                </p>
+                <h2 id="reference-detail-title">{detailEntity.name}</h2>
+              </div>
+              <button
+                className="icon-button"
+                aria-label="Close image details"
+                onClick={() => setDetailId("")}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="dialog-body reference-detail-body">
+              <img
+                className="reference-detail-image"
+                src={artifact(p.id, detailReference.file)}
+                alt={`${detailEntity.name} generated reference`}
+              />
+              <section className="settings-section">
+                <h3>Project settings</h3>
+                <dl className="reference-facts">
+                  <dt>Adaptation</dt>
+                  <dd>
+                    {p.brief.mode === "children"
+                      ? `Children · ages ${p.brief.age_range}`
+                      : "General drama"}
+                  </dd>
+                  <dt>Fidelity</dt>
+                  <dd>{p.brief.fidelity}</dd>
+                  {p.brief.direction && (
+                    <>
+                      <dt>Direction</dt>
+                      <dd>{p.brief.direction}</dd>
+                    </>
+                  )}
+                </dl>
+              </section>
+              <section className="settings-section">
+                <h3>Story grounding · read only</h3>
+                <dl className="reference-facts">
+                  <dt>Story description</dt>
+                  <dd>{detailEntity.source_facts}</dd>
+                  {detailEntity.appearance && (
+                    <>
+                      <dt>Visual design</dt>
+                      <dd>{detailEntity.appearance}</dd>
+                    </>
+                  )}
+                  {detailEntity.costume && (
+                    <>
+                      <dt>Costume</dt>
+                      <dd>{detailEntity.costume}</dd>
+                    </>
+                  )}
+                  {detailEntity.geography && (
+                    <>
+                      <dt>Geography</dt>
+                      <dd>{detailEntity.geography}</dd>
+                    </>
+                  )}
+                  {detailEntity.lighting && (
+                    <>
+                      <dt>Lighting</dt>
+                      <dd>{detailEntity.lighting}</dd>
+                    </>
+                  )}
+                </dl>
+                <h4>Source excerpts</h4>
+                <div className="reference-evidence">
+                  {evidence.map((quote: string, index: number) => (
+                    <blockquote key={`${index}-${quote.slice(0, 24)}`}>
+                      {quote}
+                    </blockquote>
+                  ))}
+                  {!evidence.length && (
+                    <p className="caption">
+                      No exact source excerpt was linked to this design. The
+                      story description above is the analysis summary.
+                    </p>
+                  )}
+                </div>
+              </section>
+              <section className="settings-section">
+                <h3>Image generation · editable prompt</h3>
+                <p className="caption">
+                  This is the complete prompt sent for this image. Edit it to
+                  change the visual result, including the style direction for
+                  this image. Source-grounded story facts remain read only.
+                </p>
+                <label className="field">
+                  Image prompt
+                  <textarea
+                    rows={7}
+                    maxLength={10000}
+                    value={promptDraft}
+                    onChange={(event) => setPromptDraft(event.target.value)}
+                  />
+                </label>
+                <dl className="reference-facts reference-generation-facts">
+                  <dt>Provider / model</dt>
+                  <dd>
+                    {detailReference.provider} · {detailReference.model}
+                  </dd>
+                  <dt>Project style</dt>
+                  <dd>
+                    {detailReference.style || p.brief.style} ·{" "}
+                    {p.bible.style_instruction}
+                  </dd>
+                  <dt>Seed</dt>
+                  <dd>{detailReference.seed ?? "Not recorded"}</dd>
+                  <dt>Attempt</dt>
+                  <dd>{detailReference.attempt}</dd>
+                </dl>
+              </section>
+              <div className="action-row reference-detail-actions">
+                <Button secondary onClick={() => setDetailId("")}>
+                  Close
+                </Button>
+                <Button
+                  disabled={busy || !!p.episodes.length || !promptDraft.trim()}
+                  onClick={() =>
+                    void job("references", {
+                      only: detailEntity.id,
+                      prompt: promptDraft,
+                    })
+                  }
+                >
+                  <RefreshCw size={14} />{" "}
+                  {p.episodes.length
+                    ? "Locked by episode plans"
+                    : "Regenerate image"}
+                </Button>
+              </div>
+              {!!p.episodes.length && (
+                <p className="caption">
+                  References are locked after episode planning to preserve
+                  visual continuity. Create a project revision to redesign the
+                  shared look.
+                </p>
+              )}
+            </div>
+          </>
+        )}
+      </dialog>
       {!p.episodes.length && (
         <div className="direction-placeholder">
           <div>

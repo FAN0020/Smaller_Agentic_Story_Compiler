@@ -85,6 +85,14 @@ class JobRequest(Contract):
     kind: Literal["analyze", "episodes", "references", "direct", "audio", "speech", "render"]
     numbers: list[int] = Field(default_factory=list)
     only: str | None = None
+    prompt: str | None = Field(default=None, max_length=10000)
+
+    @field_validator("prompt")
+    @classmethod
+    def nonempty_prompt(cls, value):
+        if value is not None and not value.strip():
+            raise ValueError("Enter an image prompt before regenerating")
+        return value
 
 
 class Approval(Contract):
@@ -327,6 +335,18 @@ def create_app(root: Path | None = None, start_worker=True):
             p = repo.get_project(id)
             if body.kind in ("episodes", "references", "direct", "audio", "speech", "render"):
                 Planner.assert_frozen(p)
+            if body.prompt is not None and body.kind != "references":
+                raise ValueError("Image prompts can only be supplied when generating references")
+            if body.kind == "references":
+                entity_ids = {e["id"] for kind in ("characters", "locations") for e in p["bible"][kind]}
+                if body.only and body.only not in entity_ids:
+                    raise ValueError("Choose a character or location in this story")
+                if body.prompt is not None and not body.only:
+                    raise ValueError("Choose one character or location for a custom image prompt")
+                if p["episodes"]:
+                    raise ValueError(
+                        "References are locked by episode plans; create a revision to redesign them"
+                    )
             if body.kind in ("direct", "audio", "speech", "render"):
                 validate_numbers(p, body.numbers)
             if body.kind == "episodes":
