@@ -32,6 +32,39 @@ from .validation import assert_references_frozen
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SAMPLES = PROJECT_ROOT / "docs/stories"
 
+LLM_MODEL_OPTIONS = [
+    {
+        "id": "qwen2.5:1.5b-instruct",
+        "label": "Qwen 2.5 · 1.5B",
+        "tier": "light",
+        "description": "Lowest memory use and quickest responses; expect more repairs on complex stories.",
+    },
+    {
+        "id": "gemma3:4b",
+        "label": "Gemma 3 · 4B",
+        "tier": "light",
+        "description": "Compact local planner for straightforward adaptations.",
+    },
+    {
+        "id": "qwen3.5:4b",
+        "label": "Qwen 3.5 · 4B",
+        "tier": "balanced",
+        "description": "Balanced local default for speed, memory use and planning quality.",
+    },
+    {
+        "id": "qwen3:8b",
+        "label": "Qwen 3 · 8B",
+        "tier": "quality",
+        "description": "More planning capacity; uses more memory and takes longer.",
+    },
+    {
+        "id": "qwen3.5:9b",
+        "label": "Qwen 3.5 · 9B",
+        "tier": "quality",
+        "description": "Higher-capacity local planning for richer story and shot direction; needs more memory.",
+    },
+]
+
 
 class NewProject(Contract):
     title: str = Field(default="Untitled story", max_length=200)
@@ -119,10 +152,54 @@ def create_app(root: Path | None = None, start_worker=True):
             "styles": [s.model_dump() for s in STYLES],
             "samples": samples,
             "models": {
-                "llm": ["qwen3.5:4b", "qwen3.5:9b", "qwen3:8b", "gemma3:4b", "qwen2.5:1.5b-instruct"],
-                "image": [*LOCAL_IMAGE_MODELS, "gpt-image-1"],
+                "llm": LLM_MODEL_OPTIONS,
+                "image": [
+                    {
+                        "id": "mlx-community/flux2-klein-4b-4bit",
+                        "label": "FLUX.2 Klein · 4-bit Apple Silicon",
+                        "tier": "balanced",
+                        "description": "Native multi-reference image composition with a smaller Apple Silicon memory footprint.",
+                    },
+                    {
+                        "id": "black-forest-labs/FLUX.2-klein-4B",
+                        "label": "FLUX.2 Klein · full precision",
+                        "tier": "quality",
+                        "description": "Full precision multi-reference composition; requires at least 32 GB RAM.",
+                    },
+                    {
+                        "id": "stabilityai/sd-turbo",
+                        "label": "SD-Turbo",
+                        "tier": "preview",
+                        "description": "Fast reference studies only; not supported for multi-reference production scenes.",
+                    },
+                    {
+                        "id": "gpt-image-1",
+                        "label": "OpenAI Images",
+                        "tier": "hosted",
+                        "description": "Hosted image generation; requires an OpenAI API key.",
+                    },
+                ],
                 "voices": KOKORO_VOICES,
-                "video": ["Lightricks/LTX-Video-0.9.1", "sora-2", "sora-2-pro"],
+                "video": [
+                    {
+                        "id": "Lightricks/LTX-Video-0.9.1",
+                        "label": "LTX-Video 0.9.1",
+                        "tier": "local",
+                        "description": "Local motion generation; no per-call provider charge, but slower and hardware intensive.",
+                    },
+                    {
+                        "id": "sora-2",
+                        "label": "Sora 2",
+                        "tier": "hosted",
+                        "description": "Hosted video generation; requires an OpenAI API key and account access.",
+                    },
+                    {
+                        "id": "sora-2-pro",
+                        "label": "Sora 2 Pro",
+                        "tier": "quality",
+                        "description": "Higher-quality hosted video option; requires an OpenAI API key and account access.",
+                    },
+                ],
             },
         }
 

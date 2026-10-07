@@ -22,12 +22,16 @@ export default function ModelSettings({
   const [key, setKey] = useState("");
   const [credential, setCredential] = useState("openai");
   const [status, setStatus] = useState<Data | null>(null);
+  const [catalog, setCatalog] = useState<Data | null>(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   useEffect(() => {
     dialog.current?.showModal();
     void api("/providers/status")
       .then(setStatus)
+      .catch((e) => setError(e.message));
+    void api("/catalog")
+      .then(setCatalog)
       .catch((e) => setError(e.message));
   }, []);
   function set(name: string, value: unknown) {
@@ -111,20 +115,60 @@ export default function ModelSettings({
             </label>
             <label className="field">
               Model
-              <input
-                list="llm-models"
-                value={form.llm_model}
-                onChange={(e) => set("llm_model", e.target.value)}
-              />
-              <datalist id="llm-models">
-                {(status?.llm?.models || ["qwen3.5:4b", "qwen3.5:9b"]).map(
-                  (m: string) => (
-                    <option key={m}>{m}</option>
-                  ),
-                )}
-              </datalist>
+              {form.llm_provider === "ollama" ? (
+                <select
+                  value={form.llm_model}
+                  onChange={(e) => set("llm_model", e.target.value)}
+                >
+                  {(catalog?.models?.llm || []).map((model: Data) => (
+                    <option value={model.id} key={model.id}>
+                      {model.label} · {model.tier}
+                    </option>
+                  ))}
+                  {(status?.llm?.models || [])
+                    .filter(
+                      (id: string) =>
+                        !(catalog?.models?.llm || []).some(
+                          (model: Data) => model.id === id,
+                        ),
+                    )
+                    .map((id: string) => (
+                      <option value={id} key={id}>
+                        {id} · installed
+                      </option>
+                    ))}
+                  {form.llm_model &&
+                    ![
+                      ...(catalog?.models?.llm || []).map((m: Data) => m.id),
+                      ...(status?.llm?.models || []),
+                    ].includes(form.llm_model) && (
+                      <option value={form.llm_model}>
+                        {form.llm_model} · saved
+                      </option>
+                    )}
+                </select>
+              ) : (
+                <input
+                  value={form.llm_model}
+                  onChange={(e) => set("llm_model", e.target.value)}
+                />
+              )}
             </label>
           </div>
+          {form.llm_provider === "ollama" && (
+            <p className="caption">
+              {catalog?.models?.llm?.find(
+                (model: Data) => model.id === form.llm_model,
+              )?.description ||
+                "Installed Ollama model. Model size and context affect memory use and response time."}
+              {!(status?.llm?.models || []).includes(form.llm_model) && (
+                <>
+                  {" "}
+                  Install it first: <code>ollama pull {form.llm_model}</code>.
+                </>
+              )}
+            </p>
+          )}
           {form.llm_provider !== "openai" && (
             <label className="field">
               Provider endpoint
@@ -195,15 +239,13 @@ export default function ModelSettings({
                   value={form.image_model}
                   onChange={(e) => set("image_model", e.target.value)}
                 >
-                  <option value="mlx-community/flux2-klein-4b-4bit">
-                    FLUX.2 Klein · 4-bit Apple Silicon
-                  </option>
-                  <option value="black-forest-labs/FLUX.2-klein-4B">
-                    FLUX.2 Klein · full precision, 32 GB+
-                  </option>
-                  <option value="stabilityai/sd-turbo">
-                    SD-Turbo · reference studies only
-                  </option>
+                  {(catalog?.models?.image || [])
+                    .filter((model: Data) => model.tier !== "hosted")
+                    .map((model: Data) => (
+                      <option value={model.id} key={model.id}>
+                        {model.label}
+                      </option>
+                    ))}
                 </select>
               ) : (
                 <input
@@ -242,11 +284,22 @@ export default function ModelSettings({
             </label>
             <label className="field">
               Video model
-              <input
-                value={form.video_model}
-                readOnly={form.video_provider !== "openai"}
-                onChange={(e) => set("video_model", e.target.value)}
-              />
+              {form.video_provider === "openai" ? (
+                <select
+                  value={form.video_model}
+                  onChange={(e) => set("video_model", e.target.value)}
+                >
+                  {(catalog?.models?.video || [])
+                    .filter((model: Data) => model.tier !== "local")
+                    .map((model: Data) => (
+                      <option value={model.id} key={model.id}>
+                        {model.label}
+                      </option>
+                    ))}
+                </select>
+              ) : (
+                <input value={form.video_model} readOnly />
+              )}
             </label>
           </div>
           {form.video_provider === "animatic" && (
@@ -257,6 +310,11 @@ export default function ModelSettings({
           )}
           {form.video_provider === "openai" && (
             <p className="caption">
+              {
+                catalog?.models?.video?.find(
+                  (model: Data) => model.id === form.video_model,
+                )?.description
+              }{" "}
               Sora input-image restrictions may prevent human-character
               references. Check your account's current model access before
               producing a series.

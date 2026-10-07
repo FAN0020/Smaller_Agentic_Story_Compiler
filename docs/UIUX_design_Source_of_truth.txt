@@ -1,0 +1,125 @@
+A useful way to think about good UI/UX is: the interface should help users understand where they are, what they can do, what will happen, and what happened—with as little unnecessary cognitive effort as possible.
+
+Core principles of good UI/UX
+
+1. Usability
+
+* Clarity — purpose and actions are immediately understandable.
+* Simplicity — remove unnecessary elements, steps, and decisions.
+* Learnability — new users can figure it out quickly.
+* Efficiency — frequent tasks can be completed with minimal effort.
+* Discoverability — important capabilities are easy to find.
+* Memorability — returning users don’t need to relearn the product.
+* Error tolerance — mistakes are difficult to make and easy to recover from.
+
+2. Information architecture
+
+* Hierarchy — importance is visually and structurally obvious.
+* Organization — related information is grouped together.
+* Progressive disclosure — show complexity only when it becomes useful.
+* Scannability — users can understand a screen without reading everything.
+* Navigation clarity — users know where they are and how to get elsewhere.
+* Context preservation — moving through the product doesn’t unnecessarily destroy the user’s state.
+
+3. Interaction design
+
+* Affordance — interactive elements look interactive.
+* Feedback — every meaningful action produces an understandable response.
+* Visibility of system status — loading, saving, processing, success, failure, etc. are visible.
+* Predictability — the same action behaves the same way.
+* Consistency — similar concepts use similar controls and patterns.
+* Responsiveness — interactions feel immediate even when underlying work takes time.
+* Reversibility — undo/cancel/back should exist where practical.
+* User control — don’t unexpectedly take actions or trap users in flows.
+
+4. Visual design
+
+* Visual hierarchy — attention naturally goes to the most important thing first.
+* Contrast — important distinctions are perceptible.
+* Alignment — elements follow a coherent spatial system.
+* Spacing — whitespace separates concepts and reduces cognitive load.
+* Typography — text has clear hierarchy and remains readable.
+* Consistency — colors, components, icons, spacing, and typography follow a design system.
+* Restraint — decoration supports comprehension rather than competing with it.
+* Density balance — enough information to be useful without overwhelming the user.
+
+5. Cognitive UX
+
+* Low cognitive load — don’t make users remember things the system can remember.
+* Recognition over recall — show choices rather than requiring users to remember commands or information.
+* Decision minimization — avoid presenting unnecessary choices.
+* Chunking — break complex information/tasks into meaningful units.
+* Good defaults — the common path should require little configuration.
+* Familiar mental models — behave roughly how users expect similar products to behave.
+* Focus — each screen should have an obvious primary purpose.
+
+6. Task and workflow design
+
+* Minimum friction — minimize unnecessary clicks, forms, confirmations, and navigation.
+* Clear primary action — users should know what to do next.
+* Logical sequencing — workflows follow the user’s mental model rather than implementation architecture.
+* Continuity — preserve progress and state.
+* Progress visibility — for longer workflows, show what’s complete and what’s left.
+* Graceful interruption — users should be able to leave and resume.
+* Power-user acceleration — shortcuts, batch actions, automation, etc. where appropriate.
+
+7. Error handling
+
+* Prevention before recovery — design away predictable errors.
+* Specific errors — explain what actually went wrong.
+* Actionable errors — tell the user what they can do next.
+* Preserve work — failure shouldn’t unnecessarily erase input/progress.
+* Safe destructive actions — distinguish irreversible operations clearly.
+* Graceful degradation — partial failure shouldn’t collapse the whole experience.
+
+8. Accessibility
+
+* Perceivability — information shouldn’t depend exclusively on color, sound, etc.
+* Keyboard accessibility
+* Readable contrast
+* Scalable text
+* Semantic structure
+* Adequate target sizes
+* Screen-reader compatibility
+* Reduced-motion support where appropriate
+
+Accessibility is better treated as a fundamental design constraint, not something added after the UI is finished.
+
+9. Trust
+
+* Transparency — users understand what the system is doing.
+* Honest affordances — buttons and labels mean what they say.
+* No dark patterns
+* Clear consequences — especially for payments, deletion, publishing, permissions, etc.
+* Privacy awareness — request only necessary information and permissions.
+* Reliability — UI state accurately reflects actual system state.
+
+10. Product-level UX
+
+Good UI can still produce bad UX if the product workflow itself is wrong. At the product level:
+
+* User-centeredness
+* Goal orientation
+* Value before friction
+* Appropriate automation
+* Personalization without unpredictability
+* Cross-screen consistency
+* Cross-device continuity
+* Performance
+* Reliability
+* Accessibility
+* Delight without interference
+
+⸻
+
+A compact “good UI/UX vocabulary”
+
+If you want something analogous to your good-code-principles list, I’d use:
+
+Clarity · Simplicity · Consistency · Hierarchy · Discoverability · Affordance · Feedback · Predictability · Responsiveness · Efficiency · Learnability · Accessibility · Readability · Scannability · Focus · Familiarity · Error Prevention · Recoverability · Reversibility · User Control · Context Preservation · Progressive Disclosure · Cognitive Economy · Good Defaults · Continuity · Transparency · Trust · Performance · Adaptability · Delight
+
+And there is one overarching principle:
+
+Make the right thing obvious, the common thing easy, the complex thing manageable, and mistakes recoverable.
+
+For an AI/agentic product like your Story Director, I would add another layer: observability, controllability, interruptibility, provenance, uncertainty communication, approval boundaries, and progressive autonomy. Those become particularly important when the UI is representing work being done by agents rather than direct deterministic actions.
